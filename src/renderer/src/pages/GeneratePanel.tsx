@@ -117,9 +117,11 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
       onGenerated(results)
     } catch (err) {
-      const msg = err instanceof Error && err.name === 'AbortError'
-        ? 'タイムアウトしました。もう一度お試しください。'
-        : 'ネットワークエラーです。インターネット接続を確認してください。'
+      const raw = err instanceof Error ? err.message : String(err)
+      const msg =
+        raw === 'TIMEOUT' ? 'タイムアウトしました。もう一度お試しください。' :
+        raw === 'RATE_LIMIT' ? 'サーバーが混雑しています。しばらく待ってから再試行してください。' :
+        `生成に失敗しました。(${raw})`
       alert(msg)
     } finally {
       setIsGenerating(false)
