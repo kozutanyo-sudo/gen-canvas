@@ -1,44 +1,39 @@
 import { useState } from 'react'
 import type { GeneratedImage } from '../App'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const generateImageViaMain = (url: string): Promise<string> => (window as any).api.generateImage(url)
+
 interface Props {
-  image: GeneratedImage
+  batch: GeneratedImage[]
+  selectedImage: GeneratedImage
+  onSelectImage: (img: GeneratedImage) => void
   onBack: () => void
   onEvolve: (img: GeneratedImage) => void
 }
 
-export default function PreviewPanel({ image, onBack, onEvolve }: Props): JSX.Element {
+export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBack, onEvolve }: Props): JSX.Element {
   const [evolvePrompt, setEvolvePrompt] = useState('')
   const [cornerRadius, setCornerRadius] = useState(0)
   const [padding, setPadding] = useState(0)
   const [isEvolving, setIsEvolving] = useState(false)
 
+  const buildEvolveUrl = (prompt: string): string => {
+    const seed = Math.floor(Math.random() * 1000000)
+    const encoded = encodeURIComponent(prompt)
+    return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&model=flux&seed=${seed}&nologo=true`
+  }
+
+  // 追加指示ありで進化
   const handleEvolve = async (): Promise<void> => {
-    if (isEvolving) return
+    if (isEvolving || !evolvePrompt.trim()) return
     setIsEvolving(true)
     try {
-      const newPrompt = evolvePrompt
-        ? `${image.prompt}, ${evolvePrompt}`
-        : image.prompt
-      const seed = Math.floor(Math.random() * 1000000)
-      const encodedPrompt = encodeURIComponent(newPrompt)
-      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&model=flux&seed=${seed}&nologo=true`
-
-      await new Promise<void>((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => resolve()
-        img.onerror = () => reject()
-        img.src = url
-      })
-
-      onEvolve({
-        id: `${Date.now()}`,
-        url,
-        prompt: newPrompt,
-        style: image.style,
-        type: image.type,
-        createdAt: Date.now()
-      })
+      const newPrompt = `${selectedImage.prompt}, ${evolvePrompt}`
+      const url = buildEvolveUrl(newPrompt)
+      const dataUrl = await generateImageViaMain(url)
+      onEvolve({ id: `${Date.now()}`, url: dataUrl, prompt: newPrompt, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now() })
+      setEvolvePrompt('')
     } catch {
       alert('進化に失敗しました。再度お試しください。')
     } finally {
@@ -46,10 +41,25 @@ export default function PreviewPanel({ image, onBack, onEvolve }: Props): JSX.El
     }
   }
 
+  // 同じプロンプトで再生成（evolvePromptは使わない）
+  const handleRegenerate = async (): Promise<void> => {
+    if (isEvolving) return
+    setIsEvolving(true)
+    try {
+      const url = buildEvolveUrl(selectedImage.prompt)
+      const dataUrl = await generateImageViaMain(url)
+      onEvolve({ id: `${Date.now()}`, url: dataUrl, prompt: selectedImage.prompt, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now() })
+    } catch {
+      alert('再生成に失敗しました。再度お試しください。')
+    } finally {
+      setIsEvolving(false)
+    }
+  }
+
   const handleDownload = (): void => {
     const a = document.createElement('a')
-    a.href = image.url
-    a.download = `gencanvas-${image.id}.png`
+    a.href = selectedImage.url
+    a.download = `gencanvas-${selectedImage.id}.png`
     a.click()
   }
 
@@ -60,18 +70,37 @@ export default function PreviewPanel({ image, onBack, onEvolve }: Props): JSX.El
     <div className="flex flex-1 overflow-hidden">
       {/* 中央：プレビュー */}
       <div className="flex-1 flex flex-col items-center justify-center bg-[#0A0A0A] p-8 gap-4">
+
+        {/* 複数枚サムネイルグリッド */}
+        {batch.length > 1 && (
+          <div className="flex gap-2 mb-2">
+            {batch.map((img) => (
+              <button
+                key={img.id}
+                onClick={() => onSelectImage(img)}
+                className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors ${
+                  selectedImage.id === img.id ? 'border-[#7C3AED]' : 'border-[#2A2A2A] hover:border-[#555]'
+                }`}
+              >
+                <img src={img.url} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 大きいプレビュー */}
         <div
           className="relative overflow-hidden bg-[#111111]"
           style={{ borderRadius, padding: paddingPx }}
         >
           <img
-            src={image.url}
-            alt={image.prompt}
+            src={selectedImage.url}
+            alt={selectedImage.prompt}
             className="max-w-[400px] max-h-[400px] object-contain"
             style={{ borderRadius: cornerRadius > 0 ? `${cornerRadius * 3}px` : '0' }}
           />
         </div>
-        <p className="text-sm text-[#555] text-center max-w-xs truncate">{image.prompt}</p>
+        <p className="text-sm text-[#555] text-center max-w-xs truncate">{selectedImage.prompt}</p>
       </div>
 
       {/* 右パネル */}
@@ -89,51 +118,43 @@ export default function PreviewPanel({ image, onBack, onEvolve }: Props): JSX.El
           />
           <button
             onClick={handleEvolve}
-            disabled={isEvolving}
+            disabled={isEvolving || !evolvePrompt.trim()}
             className="w-full py-2 rounded-lg text-sm font-medium bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-40 transition-colors text-white"
           >
-            {isEvolving ? '進化中...' : '🔄 変化させる'}
+            {isEvolving ? '処理中...' : '🔄 変化させる'}
           </button>
           <button
-            onClick={handleEvolve}
+            onClick={handleRegenerate}
             disabled={isEvolving}
             className="w-full py-2 rounded-lg text-sm font-medium bg-[#1A1A1A] hover:bg-[#2A2A2A] border border-[#2A2A2A] disabled:opacity-40 transition-colors text-[#A0A0A0]"
           >
-            ♻️ 同じ設定で再生成
+            {isEvolving ? '処理中...' : '♻️ 同じ設定で再生成'}
           </button>
         </div>
 
         <hr className="border-[#2A2A2A]" />
 
         {/* 編集ツール (アイコンのみ) */}
-        {image.type === 'icon' && (
+        {selectedImage.type === 'icon' && (
           <div className="flex flex-col gap-4">
             <h3 className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">🎨 編集</h3>
-
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between">
                 <label className="text-xs text-[#A0A0A0]">角丸</label>
                 <span className="text-xs text-[#555]">{cornerRadius}</span>
               </div>
-              <input
-                type="range" min="0" max="20"
-                value={cornerRadius}
+              <input type="range" min="0" max="20" value={cornerRadius}
                 onChange={e => setCornerRadius(parseInt(e.target.value))}
-                className="w-full accent-[#7C3AED]"
-              />
+                className="w-full accent-[#7C3AED]" />
             </div>
-
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between">
                 <label className="text-xs text-[#A0A0A0]">余白</label>
                 <span className="text-xs text-[#555]">{padding}</span>
               </div>
-              <input
-                type="range" min="0" max="20"
-                value={padding}
+              <input type="range" min="0" max="20" value={padding}
                 onChange={e => setPadding(parseInt(e.target.value))}
-                className="w-full accent-[#7C3AED]"
-              />
+                className="w-full accent-[#7C3AED]" />
             </div>
           </div>
         )}
@@ -143,26 +164,20 @@ export default function PreviewPanel({ image, onBack, onEvolve }: Props): JSX.El
         {/* エクスポート */}
         <div className="flex flex-col gap-3">
           <h3 className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">💾 エクスポート</h3>
-          <button
-            onClick={handleDownload}
-            className="w-full py-2 rounded-lg text-sm font-medium bg-[#1A1A1A] hover:bg-[#2A2A2A] border border-[#2A2A2A] transition-colors text-white"
-          >
+          <button onClick={handleDownload}
+            className="w-full py-2 rounded-lg text-sm font-medium bg-[#1A1A1A] hover:bg-[#2A2A2A] border border-[#2A2A2A] transition-colors text-white">
             📄 PNG でダウンロード
           </button>
-          <button
-            onClick={handleDownload}
-            className="w-full py-2 rounded-lg text-sm font-medium bg-[#7C3AED] hover:bg-[#6D28D9] transition-colors text-white"
-          >
+          <button onClick={handleDownload}
+            className="w-full py-2 rounded-lg text-sm font-medium bg-[#7C3AED] hover:bg-[#6D28D9] transition-colors text-white">
             📦 全サイズ ZIP
           </button>
         </div>
 
         <hr className="border-[#2A2A2A]" />
 
-        <button
-          onClick={onBack}
-          className="w-full py-2 rounded-lg text-sm text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A] border border-[#2A2A2A] transition-colors"
-        >
+        <button onClick={onBack}
+          className="w-full py-2 rounded-lg text-sm text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A] border border-[#2A2A2A] transition-colors">
           ← 戻る
         </button>
       </div>

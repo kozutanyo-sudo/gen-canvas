@@ -18,13 +18,27 @@ export interface GeneratedImage {
 function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabType>('icon')
   const [view, setView] = useState<ViewType>('generate')
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
+  const [allHistory, setAllHistory] = useState<GeneratedImage[]>([])
+  const [currentBatch, setCurrentBatch] = useState<GeneratedImage[]>([])
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null)
   const [isDark, setIsDark] = useState(true)
 
+  const handleGenerated = (images: GeneratedImage[]): void => {
+    setAllHistory(prev => [...images, ...prev])
+    setCurrentBatch(images)
+    setSelectedImage(images[0])
+    setView('preview')
+  }
+
+  const handleEvolve = (img: GeneratedImage): void => {
+    setAllHistory(prev => [img, ...prev])
+    setCurrentBatch([img])
+    setSelectedImage(img)
+  }
+
   return (
     <div className={isDark ? 'dark' : ''}>
-      <div className="flex flex-col h-screen bg-[#0A0A0A] text-[#FAFAFA] dark:bg-[#0A0A0A] dark:text-[#FAFAFA]">
+      <div className="flex flex-col h-screen bg-[#0A0A0A] text-[#FAFAFA]">
         {/* Header */}
         <header className="flex items-center justify-between px-6 py-3 border-b border-[#2A2A2A] shrink-0">
           <div className="flex items-center gap-6">
@@ -76,23 +90,25 @@ function App(): JSX.Element {
         <div className="flex flex-1 overflow-hidden">
           {view === 'history' ? (
             <HistoryPanel
-              images={generatedImages}
-              onSelect={(img) => { setSelectedImage(img); setView('preview') }}
+              images={allHistory}
+              onSelect={(img) => {
+                setCurrentBatch([img])
+                setSelectedImage(img)
+                setView('preview')
+              }}
             />
           ) : view === 'preview' && selectedImage ? (
             <PreviewPanel
-              image={selectedImage}
+              batch={currentBatch}
+              selectedImage={selectedImage}
+              onSelectImage={setSelectedImage}
               onBack={() => setView('generate')}
-              onEvolve={(img) => setGeneratedImages(prev => [img, ...prev])}
+              onEvolve={handleEvolve}
             />
           ) : (
             <GeneratePanel
               activeTab={activeTab}
-              onGenerated={(images) => {
-                setGeneratedImages(prev => [...images, ...prev])
-                setSelectedImage(images[0])
-                setView('preview')
-              }}
+              onGenerated={handleGenerated}
             />
           )}
         </div>

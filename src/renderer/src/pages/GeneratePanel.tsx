@@ -47,6 +47,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
   const [count, setCount] = useState(1)
   const [quality, setQuality] = useState(0.5)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generateProgress, setGenerateProgress] = useState('')
   const [selectedSize, setSelectedSize] = useState('desktop')
 
   const styles = activeTab === 'icon' ? ICON_STYLES : BG_STYLES
@@ -69,16 +70,16 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
     const styleDesc = styleMap[selectedStyle] || ''
 
+    const colorDesc = `dominant color ${color}`
+
     if (activeTab === 'icon') {
-      return `${userPrompt}, app icon, ${styleDesc}, isolated on white background, centered, professional, high quality`
+      return `${userPrompt}, app icon, ${styleDesc}, ${colorDesc}, isolated on white background, centered, professional, high quality`
     } else {
       const size = BG_SIZES.find(s => s.id === selectedSize)
       const ratio = size ? (size.w > size.h ? 'wide landscape' : 'tall portrait') : 'landscape'
-      return `${userPrompt}, background art, ${styleDesc}, ${ratio} composition, high quality, no text, no ui elements`
+      return `${userPrompt}, background art, ${styleDesc}, ${colorDesc}, ${ratio} composition, high quality, no text, no ui elements`
     }
   }
-
-  const [generateProgress, setGenerateProgress] = useState('')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const generateImageViaMain = (url: string): Promise<string> => (window as any).api.generateImage(url)
@@ -142,7 +143,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
             placeholder={activeTab === 'icon' ? '例: 青い猫のシンプルなアイコン' : '例: 夕焼けの幻想的な森'}
             rows={3}
             className="w-full bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white placeholder-[#555] resize-none focus:outline-none focus:border-[#7C3AED] transition-colors"
-            onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) handleGenerate() }}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerate() }}
           />
         </div>
 
@@ -273,7 +274,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         <div className="text-center text-[#333]">
           <div className="text-6xl mb-4">🎨</div>
           <p className="text-lg font-medium text-[#555]">左のパネルから画像を生成してください</p>
-          <p className="text-sm text-[#444] mt-2">Cmd+Enter で素早く生成</p>
+          <p className="text-sm text-[#444] mt-2">Ctrl+Enter で素早く生成</p>
         </div>
       </div>
     </div>
