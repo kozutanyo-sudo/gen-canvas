@@ -2,37 +2,72 @@ import { useState } from 'react'
 import type { TabType, GeneratedImage } from '../App'
 
 const ICON_STYLES = [
-  { id: 'flat', label: 'Flat', emoji: '⬜' },
-  { id: '3d', label: '3D', emoji: '🎲' },
-  { id: 'minimal', label: 'ミニマル', emoji: '◾' },
-  { id: 'gradient', label: 'グラデ', emoji: '🌈' },
-  { id: 'pixel', label: 'ドット', emoji: '👾' },
-  { id: 'line', label: '線画', emoji: '✏️' },
-  { id: 'watercolor', label: '水彩', emoji: '🎨' },
+  { id: 'flat',     label: 'フラット',   emoji: '⬜', prompt: 'flat design, simple, clean, vector' },
+  { id: '3d',       label: '3D',         emoji: '🎲', prompt: '3d render, volumetric, glossy, octane render' },
+  { id: 'minimal',  label: 'ミニマル',   emoji: '○', prompt: 'minimalist, simple, single color, clean lines' },
+  { id: 'gradient', label: 'グラデ',     emoji: '🌈', prompt: 'gradient colors, smooth, vibrant, colorful' },
+  { id: 'pixel',    label: 'ドット絵',   emoji: '👾', prompt: 'pixel art, 8bit, retro game sprite' },
+  { id: 'line',     label: '線画',       emoji: '✏️', prompt: 'line art, outline only, thin strokes, sketch' },
+  { id: 'watercolor',label:'水彩',       emoji: '🎨', prompt: 'watercolor painting, soft brushstrokes, artistic' },
+  { id: 'clay',     label: 'クレイ',     emoji: '🪆', prompt: 'clay 3d render, soft rounded shapes, cute, pastel' },
+  { id: 'glass',    label: 'ガラス',     emoji: '🔮', prompt: 'glassmorphism, frosted glass, transparent, blur effect' },
+  { id: 'neon',     label: 'ネオン',     emoji: '💡', prompt: 'neon glow effect, dark background, vivid electric colors, cyberpunk' },
+  { id: 'vintage',  label: 'ヴィンテージ',emoji:'🎞', prompt: 'vintage retro style, aged texture, muted colors, nostalgic' },
+  { id: 'comic',    label: 'コミック',   emoji: '💬', prompt: 'comic book style, bold black outlines, halftone dots, pop art' },
 ]
 
 const BG_STYLES = [
-  { id: 'realistic', label: '写実的', emoji: '📷' },
-  { id: 'anime', label: 'アニメ', emoji: '✨' },
-  { id: 'illustration', label: 'イラスト', emoji: '🖌' },
-  { id: 'abstract', label: '抽象', emoji: '🔷' },
-  { id: 'minimal', label: 'ミニマル', emoji: '◾' },
-  { id: 'cyberpunk', label: 'サイバー', emoji: '🌆' },
-  { id: 'watercolor', label: '水彩', emoji: '💧' },
+  { id: 'realistic',   label: '写実的',     emoji: '📷', prompt: 'photorealistic, detailed, high quality, natural lighting' },
+  { id: 'anime',       label: 'アニメ',     emoji: '✨', prompt: 'anime style, studio ghibli inspired, soft cel shading' },
+  { id: 'illustration',label: 'イラスト',   emoji: '🖌', prompt: 'digital illustration, colorful, detailed, concept art' },
+  { id: 'abstract',    label: '抽象',       emoji: '🔷', prompt: 'abstract art, geometric shapes, modern, bold composition' },
+  { id: 'minimal',     label: 'ミニマル',   emoji: '◻', prompt: 'minimalist, clean, simple shapes, lots of negative space' },
+  { id: 'cyberpunk',   label: 'サイバー',   emoji: '🌆', prompt: 'cyberpunk, neon lights, rain, futuristic city, dark atmosphere' },
+  { id: 'watercolor',  label: '水彩',       emoji: '💧', prompt: 'watercolor painting, soft colors, artistic, dreamy' },
+  { id: 'fantasy',     label: 'ファンタジー',emoji:'🏰', prompt: 'fantasy world, magical, epic, dramatic lighting, mystical' },
+  { id: 'scifi',       label: 'SF宇宙',     emoji: '🚀', prompt: 'science fiction, space, stars, futuristic technology, cosmic' },
+  { id: 'nature',      label: '自然',       emoji: '🌿', prompt: 'nature, lush forest, peaceful, soft morning light, serene' },
+  { id: 'dark',        label: 'ダーク',     emoji: '🌑', prompt: 'dark moody atmosphere, dramatic shadows, mysterious, cinematic' },
+  { id: 'pastel',      label: 'パステル',   emoji: '🍬', prompt: 'pastel colors, soft dreamy, kawaii, light and airy' },
+  { id: 'retro',       label: 'レトロ',     emoji: '📺', prompt: 'retro 80s vaporwave aesthetic, synthwave, purple pink sunset' },
 ]
 
 const TEMPLATES = [
-  { id: 'app', label: 'アプリアイコン', prompt: 'シンプルなアプリアイコン' },
-  { id: 'game', label: 'ゲームアイコン', prompt: 'ゲーム用のかっこいいアイコン' },
-  { id: 'avatar', label: 'アバター', prompt: 'キャラクターのアバターアイコン' },
-  { id: 'logo', label: 'ロゴ', prompt: 'シンプルなロゴマーク' },
+  { id: 'app',    label: 'アプリアイコン', prompt: 'シンプルなアプリアイコン' },
+  { id: 'game',   label: 'ゲーム',        prompt: 'ゲーム用のかっこいいアイコン' },
+  { id: 'avatar', label: 'アバター',      prompt: 'キャラクターのかわいいアバター' },
+  { id: 'logo',   label: 'ロゴマーク',    prompt: 'シンプルでモダンなロゴマーク' },
 ]
 
 const BG_SIZES = [
   { id: 'desktop', label: '🖥 デスクトップ', w: 1920, h: 1080 },
-  { id: 'mobile', label: '📱 スマホ', w: 1080, h: 1920 },
-  { id: 'twitter', label: '🐦 Twitter', w: 1500, h: 500 },
-  { id: 'youtube', label: '▶️ YouTube', w: 2560, h: 1440 },
+  { id: 'mobile',  label: '📱 スマホ',       w: 1080, h: 1920 },
+  { id: 'twitter', label: '🐦 Twitter',      w: 1500, h: 500  },
+  { id: 'youtube', label: '▶️ YouTube',      w: 2560, h: 1440 },
+]
+
+// スタイル別の推奨カラー
+const STYLE_COLORS: Record<string, string> = {
+  flat: '#4F46E5', '3d': '#059669', minimal: '#6B7280',
+  gradient: '#EC4899', pixel: '#10B981', line: '#1F2937',
+  watercolor: '#8B5CF6', clay: '#F59E0B', glass: '#06B6D4',
+  neon: '#7C3AED', vintage: '#92400E', comic: '#DC2626',
+  realistic: '#065F46', anime: '#6D28D9', illustration: '#B45309',
+  abstract: '#1D4ED8', cyberpunk: '#7C3AED', fantasy: '#5B21B6',
+  scifi: '#0369A1', nature: '#15803D', dark: '#1E1B4B',
+  pastel: '#DB2777', retro: '#7C3AED',
+}
+
+// カラープリセット
+const COLOR_PRESETS = [
+  { label: 'パープル', value: '#7C3AED' },
+  { label: 'ブルー',   value: '#2563EB' },
+  { label: 'グリーン', value: '#16A34A' },
+  { label: 'レッド',   value: '#DC2626' },
+  { label: 'オレンジ', value: '#EA580C' },
+  { label: 'ピンク',   value: '#DB2777' },
+  { label: 'ティール', value: '#0D9488' },
+  { label: '黒',       value: '#111827' },
 ]
 
 interface Props {
@@ -45,39 +80,31 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
   const [selectedStyle, setSelectedStyle] = useState('flat')
   const [color, setColor] = useState('#7C3AED')
   const [count, setCount] = useState(1)
-  const [quality, setQuality] = useState(0.5)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateProgress, setGenerateProgress] = useState('')
   const [selectedSize, setSelectedSize] = useState('desktop')
 
   const styles = activeTab === 'icon' ? ICON_STYLES : BG_STYLES
 
-  const buildPrompt = (userPrompt: string): string => {
-    const styleMap: Record<string, string> = {
-      flat: 'flat design, simple, clean',
-      '3d': '3d render, volumetric, glossy',
-      minimal: 'minimalist, simple, clean lines',
-      gradient: 'gradient colors, smooth, vibrant',
-      pixel: 'pixel art, 8bit, retro',
-      line: 'line art, outline, sketch',
-      watercolor: 'watercolor painting, soft, artistic',
-      realistic: 'photorealistic, detailed, high quality',
-      anime: 'anime style, cel shaded, japanese animation',
-      illustration: 'digital illustration, colorful, detailed',
-      abstract: 'abstract art, geometric, modern',
-      cyberpunk: 'cyberpunk, neon, futuristic, dark',
+  const handleStyleSelect = (styleId: string): void => {
+    setSelectedStyle(styleId)
+    // スタイルに合わせてカラーを自動設定
+    if (STYLE_COLORS[styleId]) {
+      setColor(STYLE_COLORS[styleId])
     }
+  }
 
-    const styleDesc = styleMap[selectedStyle] || ''
-
-    const colorDesc = `dominant color ${color}`
+  const buildPrompt = (userPrompt: string): string => {
+    const styleObj = styles.find(s => s.id === selectedStyle)
+    const styleDesc = styleObj?.prompt || ''
+    const colorHex = color
 
     if (activeTab === 'icon') {
-      return `${userPrompt}, app icon, ${styleDesc}, ${colorDesc}, isolated on white background, centered, professional, high quality`
+      return `${userPrompt}, app icon, ${styleDesc}, color scheme ${colorHex}, isolated on white background, centered, professional, high quality, no text`
     } else {
       const size = BG_SIZES.find(s => s.id === selectedSize)
       const ratio = size ? (size.w > size.h ? 'wide landscape' : 'tall portrait') : 'landscape'
-      return `${userPrompt}, background art, ${styleDesc}, ${colorDesc}, ${ratio} composition, high quality, no text, no ui elements`
+      return `${userPrompt}, background art, ${styleDesc}, color palette inspired by ${colorHex}, ${ratio} composition, high quality, no text, no ui elements, no watermark`
     }
   }
 
@@ -115,9 +142,9 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err)
       const msg =
-        raw.includes('NO_TOKEN') ? 'APIトークンが設定されていません。⚙️から設定してください。' :
+        raw.includes('NO_TOKEN')      ? 'APIトークンが設定されていません。⚙️から設定してください。' :
         raw.includes('INVALID_TOKEN') ? 'APIトークンが無効です。⚙️から再設定してください。' :
-        raw.includes('REQUEST_TIMEOUT') ? '生成タイムアウト。再度お試しください。' :
+        raw.includes('REQUEST_TIMEOUT')? '生成タイムアウト。再度お試しください。' :
         raw.includes('MODEL_LOADING') ? 'AIモデル準備中です。少し待ってから再試行してください。' :
         `生成に失敗しました。(${raw})`
       alert(msg)
@@ -156,7 +183,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
                 <button
                   key={t.id}
                   onClick={() => setPrompt(t.prompt)}
-                  className="text-xs px-2 py-1.5 bg-[#111111] border border-[#2A2A2A] rounded-md text-[#A0A0A0] hover:text-white hover:border-[#7C3AED] transition-colors text-left"
+                  className="text-xs px-2 py-1.5 bg-[#111111] border border-[#2A2A2A] rounded-md text-[#AAAAAA] hover:text-white hover:border-[#7C3AED] transition-colors text-left"
                 >
                   {t.label}
                 </button>
@@ -177,7 +204,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
                   className={`text-xs px-3 py-2 rounded-md border text-left transition-colors ${
                     selectedSize === s.id
                       ? 'bg-[#7C3AED]/20 border-[#7C3AED] text-white'
-                      : 'bg-[#111111] border-[#2A2A2A] text-[#A0A0A0] hover:text-white hover:border-[#3A3A3A]'
+                      : 'bg-[#111111] border-[#2A2A2A] text-[#AAAAAA] hover:text-white hover:border-[#3A3A3A]'
                   }`}
                 >
                   <span>{s.label}</span>
@@ -190,20 +217,20 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
         {/* スタイル選択 */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold text-[#AAAAAA]">スタイル</label>
+          <label className="text-xs font-semibold text-[#AAAAAA]">スタイル <span className="text-[#666] font-normal">（選択で色も自動設定）</span></label>
           <div className="grid grid-cols-3 gap-1.5">
             {styles.map(s => (
               <button
                 key={s.id}
-                onClick={() => setSelectedStyle(s.id)}
+                onClick={() => handleStyleSelect(s.id)}
                 className={`flex flex-col items-center gap-1 py-2.5 rounded-lg border text-xs transition-colors ${
                   selectedStyle === s.id
                     ? 'bg-[#7C3AED]/20 border-[#7C3AED] text-white'
-                    : 'bg-[#111111] border-[#2A2A2A] text-[#A0A0A0] hover:text-white hover:border-[#3A3A3A]'
+                    : 'bg-[#111111] border-[#2A2A2A] text-[#AAAAAA] hover:text-white hover:border-[#3A3A3A]'
                 }`}
               >
-                <span className="text-base">{s.emoji}</span>
-                <span>{s.label}</span>
+                <span className="text-sm">{s.emoji}</span>
+                <span className="leading-tight text-center">{s.label}</span>
               </button>
             ))}
           </div>
@@ -212,14 +239,29 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         {/* カラー */}
         <div className="flex flex-col gap-2">
           <label className="text-xs font-semibold text-[#AAAAAA]">メインカラー</label>
+          {/* プリセット */}
+          <div className="flex gap-1.5 flex-wrap">
+            {COLOR_PRESETS.map(p => (
+              <button
+                key={p.value}
+                onClick={() => setColor(p.value)}
+                title={p.label}
+                className={`w-6 h-6 rounded-full border-2 transition-all ${
+                  color === p.value ? 'border-white scale-110' : 'border-transparent hover:scale-105'
+                }`}
+                style={{ backgroundColor: p.value }}
+              />
+            ))}
+          </div>
+          {/* カラーピッカー */}
           <div className="flex items-center gap-3">
             <input
               type="color"
               value={color}
               onChange={e => setColor(e.target.value)}
-              className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0"
+              className="w-9 h-9 rounded-lg cursor-pointer bg-transparent border-0"
             />
-            <span className="text-sm text-[#A0A0A0] font-mono">{color}</span>
+            <span className="text-sm text-[#AAAAAA] font-mono">{color}</span>
           </div>
         </div>
 
@@ -234,28 +276,12 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
                 className={`w-10 h-10 rounded-lg border text-sm font-medium transition-colors ${
                   count === n
                     ? 'bg-[#7C3AED] border-[#7C3AED] text-white'
-                    : 'bg-[#111111] border-[#2A2A2A] text-[#A0A0A0] hover:text-white'
+                    : 'bg-[#111111] border-[#2A2A2A] text-[#AAAAAA] hover:text-white'
                 }`}
               >
                 {n}
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* 品質スライダー */}
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold text-[#AAAAAA]">モード</label>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[#A0A0A0]">⚡ 速い</span>
-            <input
-              type="range"
-              min="0" max="1" step="0.5"
-              value={quality}
-              onChange={e => setQuality(parseFloat(e.target.value))}
-              className="flex-1 accent-[#7C3AED]"
-            />
-            <span className="text-xs text-[#A0A0A0]">🌟 美しく</span>
           </div>
         </div>
 
@@ -267,6 +293,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         >
           {isGenerating ? (generateProgress || '✨ 生成中...') : '✨ 生成する'}
         </button>
+        <p className="text-xs text-[#555] text-center -mt-3">Ctrl+Enter で生成</p>
       </div>
 
       {/* 中央：待機中のメッセージ */}
