@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import * as https from 'https'
+import * as http from 'http'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
 function createWindow(): void {
@@ -33,17 +34,25 @@ function createWindow(): void {
   }
 }
 
-// Node.js https モジュールで画像をダウンロードして base64 で返す
-function downloadImage(url: string): Promise<string> {
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms))
+}
+
+// 1回だけ試みる（リダイレクト対応）
+function tryFetch(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const request = https.get(url, { timeout: 90000 }, (res) => {
-      // リダイレクト対応
-      if (res.statusCode === 301 || res.statusCode === 302) {
-        const location = res.headers.location
-        if (location) {
-          downloadImage(location).then(resolve).catch(reject)
-          return
-        }
+    const lib = url.startsWith('https') ? https : http
+    const req = lib.get(url, {
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'GenCanvas/1.0 (Desktop App)',
+        'Accept': 'image/png,image/jpeg,image/*'
+      }
+    }, (res) => {
+      // リダイレクト追跡
+      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+        tryFetch(res.headers.location).then(resolve).catch(reject)
+        return
       }
 
       if (res.statusCode === 402) {
@@ -60,48 +69,63 @@ function downloadImage(url: string): Promise<string> {
       res.on('data', (chunk: Buffer) => chunks.push(chunk))
       res.on('end', () => {
         const buffer = Buffer.concat(chunks)
-        const base64 = buffer.toString('base64')
-        resolve(`data:image/png;base64,${base64}`)
+        if (buffer.length < 1000) {
+          // 小さすぎる = エラーレスポンス
+          reject(new Error(`SMALL_RESPONSE_${buffer.length}`))
+          return
+        }
+        resolve(`data:image/png;base64,${buffer.toString('base64')}`)
       })
       res.on('error', reject)
     })
 
-    request.on('error', reject)
-    request.on('timeout', () => {
-      request.destroy()
-      reject(new Error('TIMEOUT'))
+    req.on('error', reject)
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error('REQUEST_TIMEOUT'))
     })
   })
 }
 
-ipcMain.handle('generate-image', async (_event, url: string): Promise<string> => {
-  const MAX_RETRIES = 3
+// レート制限は5秒ごとに最大2分間リトライ
+async function downloadWithPolling(url: string): Promise<string> {
+  const MAX_MS = 120_000
+  const POLL_MS = 5_000
+  const start = Date.now()
+  let attempts = 0
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  while (Date.now() - start < MAX_MS) {
+    attempts++
     try {
-      console.log(`[GenCanvas] 生成リクエスト (試行 ${attempt + 1}/${MAX_RETRIES}): ${url.slice(0, 80)}...`)
-      const result = await downloadImage(url)
-      console.log(`[GenCanvas] 生成成功`)
+      console.log(`[GenCanvas] 試行 #${attempts} (経過 ${Math.round((Date.now() - start) / 1000)}s)`)
+      const result = await tryFetch(url)
+      console.log(`[GenCanvas] 成功 (試行 #${attempts})`)
       return result
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      console.error(`[GenCanvas] エラー: ${errMsg}`)
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[GenCanvas] エラー: ${msg}`)
 
-      if (errMsg === 'RATE_LIMIT') {
-        console.log(`[GenCanvas] レート制限 - ${6 * (attempt + 1)}秒待機`)
-        await new Promise(r => setTimeout(r, 6000 * (attempt + 1)))
-        continue
+      if (msg === 'RATE_LIMIT') {
+        const elapsed = Date.now() - start
+        if (elapsed + POLL_MS < MAX_MS) {
+          console.log(`[GenCanvas] レート制限 - ${POLL_MS / 1000}秒後に再試行`)
+          await sleep(POLL_MS)
+          continue
+        }
+        throw new Error('RATE_LIMIT_TIMEOUT')
       }
 
-      if (errMsg === 'TIMEOUT' || attempt === MAX_RETRIES - 1) {
-        throw new Error(errMsg)
-      }
-
-      await new Promise(r => setTimeout(r, 3000))
+      // レート制限以外のエラーは即throw
+      throw err
     }
   }
 
-  throw new Error('MAX_RETRIES_EXCEEDED')
+  throw new Error('TIMEOUT_2MIN')
+}
+
+ipcMain.handle('generate-image', async (_event, url: string): Promise<string> => {
+  console.log(`[GenCanvas] 生成開始: ${url.slice(0, 100)}...`)
+  return downloadWithPolling(url)
 })
 
 app.whenReady().then(() => {
