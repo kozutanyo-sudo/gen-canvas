@@ -78,9 +78,37 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
     }
   }
 
+  const [generateProgress, setGenerateProgress] = useState('')
+
+  const fetchImageAsBlob = async (url: string, retries = 3): Promise<string> => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 90000)
+      try {
+        const res = await fetch(url, { signal: controller.signal })
+        if (res.status === 402) {
+          // レート制限: 少し待ってリトライ
+          clearTimeout(timer)
+          await new Promise(r => setTimeout(r, 5000 * (attempt + 1)))
+          continue
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const blob = await res.blob()
+        clearTimeout(timer)
+        return URL.createObjectURL(blob)
+      } catch (err) {
+        clearTimeout(timer)
+        if (attempt === retries - 1) throw err
+        await new Promise(r => setTimeout(r, 3000))
+      }
+    }
+    throw new Error('生成失敗')
+  }
+
   const handleGenerate = async (): Promise<void> => {
     if (!prompt.trim() || isGenerating) return
     setIsGenerating(true)
+    setGenerateProgress('')
 
     try {
       const model = quality > 0.5 ? 'flux' : 'turbo'
@@ -90,36 +118,33 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
       const builtPrompt = buildPrompt(prompt)
       const seed = Math.floor(Math.random() * 1000000)
+      const results: GeneratedImage[] = []
 
-      const results: GeneratedImage[] = await Promise.all(
-        Array.from({ length: count }, async (_, i) => {
-          const encodedPrompt = encodeURIComponent(builtPrompt)
-          const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${size.w}&height=${size.h}&model=${model}&seed=${seed + i}&nologo=true`
-
-          // 画像のプリロード
-          await new Promise<void>((resolve, reject) => {
-            const img = new Image()
-            img.onload = () => resolve()
-            img.onerror = () => reject(new Error('生成失敗'))
-            img.src = url
-          })
-
-          return {
-            id: `${Date.now()}-${i}`,
-            url,
-            prompt: prompt,
-            style: selectedStyle,
-            type: activeTab,
-            createdAt: Date.now()
-          }
+      // 順番に1枚ずつ生成（レート制限対策）
+      for (let i = 0; i < count; i++) {
+        setGenerateProgress(count > 1 ? `生成中... (${i + 1}/${count})` : '生成中...')
+        const encodedPrompt = encodeURIComponent(builtPrompt)
+        const apiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${size.w}&height=${size.h}&model=${model}&seed=${seed + i}&nologo=true`
+        const blobUrl = await fetchImageAsBlob(apiUrl)
+        results.push({
+          id: `${Date.now()}-${i}`,
+          url: blobUrl,
+          prompt: prompt,
+          style: selectedStyle,
+          type: activeTab,
+          createdAt: Date.now()
         })
-      )
+      }
 
       onGenerated(results)
-    } catch {
-      alert('生成に失敗しました。しばらくしてから再度お試しください。')
+    } catch (err) {
+      const msg = err instanceof Error && err.name === 'AbortError'
+        ? 'タイムアウトしました。もう一度お試しください。'
+        : 'ネットワークエラーです。インターネット接続を確認してください。'
+      alert(msg)
     } finally {
       setIsGenerating(false)
+      setGenerateProgress('')
     }
   }
 
@@ -261,7 +286,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
           disabled={isGenerating || !prompt.trim()}
           className="w-full py-3 rounded-xl font-semibold text-sm transition-all bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-[#7C3AED]/20"
         >
-          {isGenerating ? '✨ 生成中...' : '✨ 生成する'}
+          {isGenerating ? (generateProgress || '✨ 生成中...') : '✨ 生成する'}
         </button>
       </div>
 
