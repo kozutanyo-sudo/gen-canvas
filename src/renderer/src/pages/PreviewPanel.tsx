@@ -253,12 +253,11 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
   const shapePreviewStyle: React.CSSProperties = {
     position: 'absolute',
     left: `${shape.x}%`, top: `${shape.y}%`,
-    transform: 'translate(-50%, -50%)',
+    transform: `translate(-50%, -50%)${shape.type === 'diamond' ? ' rotate(45deg)' : ''}`,
     width: `${shape.size * 1.2}px`, height: `${shape.size * 1.2}px`,
     opacity: shape.opacity / 100,
     pointerEvents: 'none',
-    borderRadius: shape.type === 'circle' ? '50%' : shape.type === 'roundrect' ? '20%' : shape.type === 'diamond' ? '0' : '0',
-    transform: `translate(-50%, -50%) ${shape.type === 'diamond' ? 'rotate(45deg)' : ''}`,
+    borderRadius: shape.type === 'circle' ? '50%' : shape.type === 'roundrect' ? '20%' : '0',
     background: shape.type === 'circle' && shape.sphere3d
       ? `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.85) 0%, ${shape.color} 45%, ${shadeColor(shape.color, -60)} 100%)`
       : shape.color,
