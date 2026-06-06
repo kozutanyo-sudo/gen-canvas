@@ -80,30 +80,8 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
   const [generateProgress, setGenerateProgress] = useState('')
 
-  const fetchImageAsBlob = async (url: string, retries = 3): Promise<string> => {
-    for (let attempt = 0; attempt < retries; attempt++) {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 90000)
-      try {
-        const res = await fetch(url, { signal: controller.signal })
-        if (res.status === 402) {
-          // レート制限: 少し待ってリトライ
-          clearTimeout(timer)
-          await new Promise(r => setTimeout(r, 5000 * (attempt + 1)))
-          continue
-        }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const blob = await res.blob()
-        clearTimeout(timer)
-        return URL.createObjectURL(blob)
-      } catch (err) {
-        clearTimeout(timer)
-        if (attempt === retries - 1) throw err
-        await new Promise(r => setTimeout(r, 3000))
-      }
-    }
-    throw new Error('生成失敗')
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const generateImageViaMain = (url: string): Promise<string> => (window as any).api.generateImage(url)
 
   const handleGenerate = async (): Promise<void> => {
     if (!prompt.trim() || isGenerating) return
@@ -125,7 +103,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         setGenerateProgress(count > 1 ? `生成中... (${i + 1}/${count})` : '生成中...')
         const encodedPrompt = encodeURIComponent(builtPrompt)
         const apiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${size.w}&height=${size.h}&model=${model}&seed=${seed + i}&nologo=true`
-        const blobUrl = await fetchImageAsBlob(apiUrl)
+        const blobUrl = await generateImageViaMain(apiUrl)
         results.push({
           id: `${Date.now()}-${i}`,
           url: blobUrl,

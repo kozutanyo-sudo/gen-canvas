@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, net } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
@@ -32,14 +32,43 @@ function createWindow(): void {
   }
 }
 
+// Pollinationsへの画像生成リクエストをメインプロセスで実行
+ipcMain.handle('generate-image', async (_event, url: string): Promise<string> => {
+  const MAX_RETRIES = 3
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await net.fetch(url)
+
+      if (response.status === 402) {
+        // レート制限: 待ってリトライ
+        await new Promise(r => setTimeout(r, 6000 * (attempt + 1)))
+        continue
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const buffer = await response.arrayBuffer()
+      const base64 = Buffer.from(buffer).toString('base64')
+      return `data:image/png;base64,${base64}`
+
+    } catch (err) {
+      if (attempt === MAX_RETRIES - 1) throw err
+      await new Promise(r => setTimeout(r, 3000))
+    }
+  }
+
+  throw new Error('生成失敗')
+})
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.gencanvas.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-
-  ipcMain.on('ping', () => console.log('pong'))
 
   createWindow()
 
