@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import GeneratePanel from './pages/GeneratePanel'
 import PreviewPanel from './pages/PreviewPanel'
 import HistoryPanel from './pages/HistoryPanel'
@@ -16,8 +16,17 @@ export interface GeneratedImage {
   createdAt: number
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const api = (): any => (window as any).api
+const TOKEN_KEY = 'gencanvas_hf_token'
+
+function loadToken(): string {
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+
+function saveToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token)
+  // IPCでファイルにも保存（バックアップ）
+  try { (window as any).api.setSettings({ hfToken: token }) } catch { /* ignore */ }
+}
 
 function App(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabType>('icon')
@@ -26,17 +35,11 @@ function App(): JSX.Element {
   const [currentBatch, setCurrentBatch] = useState<GeneratedImage[]>([])
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null)
   const [isDark, setIsDark] = useState(true)
-  const [hfToken, setHfToken] = useState<string | null>(null)
-  const [isLoadingSettings, setIsLoadingSettings] = useState(true)
-
-  useEffect(() => {
-    api().getSettings().then((s: { hfToken: string }) => {
-      setHfToken(s.hfToken || '')
-      setIsLoadingSettings(false)
-    })
-  }, [])
+  // localStorageから即座に読み込む（非同期不要・確実に永続化）
+  const [hfToken, setHfToken] = useState<string>(() => loadToken())
 
   const handleSetupComplete = (token: string): void => {
+    saveToken(token)
     setHfToken(token)
   }
 
@@ -51,14 +54,6 @@ function App(): JSX.Element {
     setAllHistory(prev => [img, ...prev])
     setCurrentBatch([img])
     setSelectedImage(img)
-  }
-
-  if (isLoadingSettings) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[#0A0A0A]">
-        <div className="text-[#888] text-sm">読み込み中...</div>
-      </div>
-    )
   }
 
   if (!hfToken) {
@@ -113,9 +108,9 @@ function App(): JSX.Element {
               {isDark ? '☀️' : '🌙'}
             </button>
             <button
-              onClick={() => setHfToken('')}
+              onClick={() => { saveToken(''); setHfToken('') }}
               className="px-3 py-1.5 rounded-md text-sm text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A] transition-colors"
-              title="API設定"
+              title="APIトークンを再設定"
             >
               ⚙️
             </button>

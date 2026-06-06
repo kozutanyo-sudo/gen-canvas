@@ -165,7 +165,11 @@ async function generateWithRetry(
   throw new Error('MAX_ATTEMPTS')
 }
 
-ipcMain.handle('get-settings', () => loadSettings())
+ipcMain.handle('get-settings', () => {
+  const settings = loadSettings()
+  console.log(`[GenCanvas] get-settings: path=${getSettingsPath()} token=${settings.hfToken ? settings.hfToken.slice(0,8)+'...' : '(empty)'}`)
+  return settings
+})
 
 ipcMain.handle('set-settings', (_event, settings: Settings) => {
   saveSettings(settings)
