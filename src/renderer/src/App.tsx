@@ -16,16 +16,14 @@ export interface GeneratedImage {
   createdAt: number
 }
 
-const TOKEN_KEY = 'gencanvas_hf_token'
-
 function loadToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || ''
+  // プリロードが同期でファイルから読んだ値を使う（ポート番号に依存しない）
+  return (window as any).api?.getInitialToken?.() || ''
 }
 
 function saveToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
-  // IPCでファイルにも保存（バックアップ）
-  try { (window as any).api.setSettings({ hfToken: token }) } catch { /* ignore */ }
+  // プリロード経由でファイルに直接書き込む
+  try { (window as any).api?.saveToken?.(token) } catch { /* ignore */ }
 }
 
 function App(): JSX.Element {
