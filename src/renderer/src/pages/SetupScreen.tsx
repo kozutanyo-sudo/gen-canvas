@@ -145,7 +145,7 @@ export default function SetupScreen({ onComplete }: Props): JSX.Element {
           </div>
         )}
 
-        <p className="text-center text-[#444] text-xs mt-6">
+        <p className="text-center text-[#666] text-xs mt-6">
           トークンはこの PC にのみ保存されます。外部に送信されることはありません。
         </p>
       </div>

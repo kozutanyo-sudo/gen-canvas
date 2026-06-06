@@ -134,7 +134,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
         {/* プロンプト入力 */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">
+          <label className="text-xs font-semibold text-[#AAAAAA]">
             {activeTab === 'icon' ? 'どんなアイコンを作りますか？' : 'どんな背景を作りますか？'}
           </label>
           <textarea
@@ -142,7 +142,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
             onChange={e => setPrompt(e.target.value)}
             placeholder={activeTab === 'icon' ? '例: 青い猫のシンプルなアイコン' : '例: 夕焼けの幻想的な森'}
             rows={3}
-            className="w-full bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white placeholder-[#555] resize-none focus:outline-none focus:border-[#7C3AED] transition-colors"
+            className="w-full bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white placeholder-[#666] resize-none focus:outline-none focus:border-[#7C3AED] transition-colors"
             onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerate() }}
           />
         </div>
@@ -150,7 +150,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         {/* クイックテンプレート (アイコンのみ) */}
         {activeTab === 'icon' && (
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">テンプレート</label>
+            <label className="text-xs font-semibold text-[#AAAAAA]">テンプレート</label>
             <div className="grid grid-cols-2 gap-1.5">
               {TEMPLATES.map(t => (
                 <button
@@ -168,7 +168,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         {/* サイズ選択 (背景のみ) */}
         {activeTab === 'background' && (
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">サイズ</label>
+            <label className="text-xs font-semibold text-[#AAAAAA]">サイズ</label>
             <div className="flex flex-col gap-1.5">
               {BG_SIZES.map(s => (
                 <button
@@ -181,7 +181,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
                   }`}
                 >
                   <span>{s.label}</span>
-                  <span className="text-[#555] ml-2">{s.w}×{s.h}</span>
+                  <span className="text-[#777] ml-2">{s.w}×{s.h}</span>
                 </button>
               ))}
             </div>
@@ -190,7 +190,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
         {/* スタイル選択 */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">スタイル</label>
+          <label className="text-xs font-semibold text-[#AAAAAA]">スタイル</label>
           <div className="grid grid-cols-3 gap-1.5">
             {styles.map(s => (
               <button
@@ -211,7 +211,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
         {/* カラー */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">メインカラー</label>
+          <label className="text-xs font-semibold text-[#AAAAAA]">メインカラー</label>
           <div className="flex items-center gap-3">
             <input
               type="color"
@@ -225,7 +225,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
         {/* 生成数 */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">生成数</label>
+          <label className="text-xs font-semibold text-[#AAAAAA]">生成数</label>
           <div className="flex gap-2">
             {[1, 2, 4].map(n => (
               <button
@@ -245,7 +245,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
         {/* 品質スライダー */}
         <div className="flex flex-col gap-2">
-          <label className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">モード</label>
+          <label className="text-xs font-semibold text-[#AAAAAA]">モード</label>
           <div className="flex items-center gap-3">
             <span className="text-xs text-[#A0A0A0]">⚡ 速い</span>
             <input
@@ -271,10 +271,10 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
       {/* 中央：待機中のメッセージ */}
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-center text-[#333]">
-          <div className="text-6xl mb-4">🎨</div>
-          <p className="text-lg font-medium text-[#555]">左のパネルから画像を生成してください</p>
-          <p className="text-sm text-[#444] mt-2">Ctrl+Enter で素早く生成</p>
+        <div className="text-center">
+          <div className="text-6xl mb-4 opacity-30">🎨</div>
+          <p className="text-base font-medium text-[#666]">左のパネルから画像を生成してください</p>
+          <p className="text-sm text-[#555] mt-2">Ctrl+Enter で素早く生成</p>
         </div>
       </div>
     </div>

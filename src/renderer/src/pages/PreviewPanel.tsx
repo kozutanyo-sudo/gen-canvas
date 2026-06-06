@@ -95,7 +95,7 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
             style={{ borderRadius: cornerRadius > 0 ? `${cornerRadius * 3}px` : '0' }}
           />
         </div>
-        <p className="text-sm text-[#555] text-center max-w-xs truncate">{selectedImage.prompt}</p>
+        <p className="text-sm text-[#888] text-center max-w-xs truncate">{selectedImage.prompt}</p>
       </div>
 
       {/* 右パネル */}
@@ -103,13 +103,13 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
 
         {/* 進化させる */}
         <div className="flex flex-col gap-3">
-          <h3 className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">✏️ 進化させる</h3>
+          <h3 className="text-xs font-semibold text-[#AAAAAA]">✏️ 進化させる</h3>
           <textarea
             value={evolvePrompt}
             onChange={e => setEvolvePrompt(e.target.value)}
             placeholder="追加の指示 (例: もっと明るく)"
             rows={2}
-            className="w-full bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white placeholder-[#555] resize-none focus:outline-none focus:border-[#7C3AED] transition-colors"
+            className="w-full bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white placeholder-[#666] resize-none focus:outline-none focus:border-[#7C3AED] transition-colors"
           />
           <button
             onClick={handleEvolve}
@@ -132,11 +132,11 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
         {/* 編集ツール (アイコンのみ) */}
         {selectedImage.type === 'icon' && (
           <div className="flex flex-col gap-4">
-            <h3 className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">🎨 編集</h3>
+            <h3 className="text-xs font-semibold text-[#AAAAAA]">🎨 編集</h3>
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between">
                 <label className="text-xs text-[#A0A0A0]">角丸</label>
-                <span className="text-xs text-[#555]">{cornerRadius}</span>
+                <span className="text-xs text-[#888]">{cornerRadius}</span>
               </div>
               <input type="range" min="0" max="20" value={cornerRadius}
                 onChange={e => setCornerRadius(parseInt(e.target.value))}
@@ -145,7 +145,7 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between">
                 <label className="text-xs text-[#A0A0A0]">余白</label>
-                <span className="text-xs text-[#555]">{padding}</span>
+                <span className="text-xs text-[#888]">{padding}</span>
               </div>
               <input type="range" min="0" max="20" value={padding}
                 onChange={e => setPadding(parseInt(e.target.value))}
@@ -158,7 +158,7 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
 
         {/* エクスポート */}
         <div className="flex flex-col gap-3">
-          <h3 className="text-xs text-[#A0A0A0] font-medium uppercase tracking-wider">💾 エクスポート</h3>
+          <h3 className="text-xs font-semibold text-[#AAAAAA]">💾 エクスポート</h3>
           <button onClick={handleDownload}
             className="w-full py-2 rounded-lg text-sm font-medium bg-[#1A1A1A] hover:bg-[#2A2A2A] border border-[#2A2A2A] transition-colors text-white">
             📄 PNG でダウンロード

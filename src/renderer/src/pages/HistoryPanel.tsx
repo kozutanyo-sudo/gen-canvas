@@ -28,7 +28,7 @@ export default function HistoryPanel({ images, onSelect }: Props): JSX.Element {
               className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
                 filter === f
                   ? 'bg-[#7C3AED] text-white'
-                  : 'bg-[#111111] text-[#A0A0A0] hover:text-white border border-[#2A2A2A]'
+                  : 'bg-[#111111] text-[#AAAAAA] hover:text-white border border-[#2A2A2A]'
               }`}
             >
               {f === 'all' ? 'すべて' : f === 'icon' ? 'アイコン' : '背景'}
@@ -40,18 +40,18 @@ export default function HistoryPanel({ images, onSelect }: Props): JSX.Element {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="🔍 キーワード検索"
-          className="bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-1.5 text-sm text-white placeholder-[#555] focus:outline-none focus:border-[#7C3AED] transition-colors"
+          className="bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-1.5 text-sm text-white placeholder-[#666] focus:outline-none focus:border-[#7C3AED] transition-colors"
         />
-        <span className="text-sm text-[#555] ml-auto">全 {filtered.length} 件</span>
+        <span className="text-sm text-[#888] ml-auto">全 {filtered.length} 件</span>
       </div>
 
       {/* グリッド */}
       {filtered.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-[#333]">
+        <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="text-5xl mb-3">🕐</div>
-            <p className="text-[#555]">履歴がありません</p>
-            <p className="text-sm text-[#444] mt-1">画像を生成すると、ここに表示されます</p>
+            <div className="text-5xl mb-3 opacity-30">🕐</div>
+            <p className="text-[#777]">履歴がありません</p>
+            <p className="text-sm text-[#666] mt-1">画像を生成すると、ここに表示されます</p>
           </div>
         </div>
       ) : (

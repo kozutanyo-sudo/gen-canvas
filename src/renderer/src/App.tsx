@@ -56,7 +56,7 @@ function App(): JSX.Element {
   if (isLoadingSettings) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#0A0A0A]">
-        <div className="text-[#555] text-sm">読み込み中...</div>
+        <div className="text-[#888] text-sm">読み込み中...</div>
       </div>
     )
   }
