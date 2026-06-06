@@ -165,6 +165,49 @@ async function generateWithRetry(
   throw new Error('MAX_ATTEMPTS')
 }
 
+// 日本語→英語翻訳（Helsinki-NLP/opus-mt-ja-en）
+function translateJaToEn(text: string, token: string): Promise<string> {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ inputs: text })
+    const options = {
+      hostname: 'router.huggingface.co',
+      path: '/hf-inference/models/Helsinki-NLP/opus-mt-ja-en',
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 30000
+    }
+    const req = https.request(options, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString())
+          const translated = data[0]?.translation_text || data?.translation_text || ''
+          console.log(`[GenCanvas] 翻訳: "${text}" → "${translated}"`)
+          resolve(translated || text)
+        } catch {
+          resolve(text)
+        }
+      })
+      res.on('error', () => resolve(text))
+    })
+    req.on('error', () => resolve(text))
+    req.on('timeout', () => { req.destroy(); resolve(text) })
+    req.write(body)
+    req.end()
+  })
+}
+
+ipcMain.handle('translate-text', async (_event, text: string): Promise<string> => {
+  const settings = loadSettings()
+  if (!settings.hfToken) return text
+  return translateJaToEn(text, settings.hfToken)
+})
+
 ipcMain.handle('get-settings', () => {
   const settings = loadSettings()
   console.log(`[GenCanvas] get-settings: path=${getSettingsPath()} token=${settings.hfToken ? settings.hfToken.slice(0,8)+'...' : '(empty)'}`)

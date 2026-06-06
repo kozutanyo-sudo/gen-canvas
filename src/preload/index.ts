@@ -36,6 +36,8 @@ const api = {
 
   generateImage: (prompt: string, width: number, height: number): Promise<string> =>
     ipcRenderer.invoke('generate-image', prompt, width, height),
+  translateText: (text: string): Promise<string> =>
+    ipcRenderer.invoke('translate-text', text),
   getSettings: (): Promise<{ hfToken: string }> => ipcRenderer.invoke('get-settings'),
   setSettings: (settings: { hfToken: string }): Promise<boolean> =>
     ipcRenderer.invoke('set-settings', settings)
