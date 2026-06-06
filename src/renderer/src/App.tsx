@@ -1,0 +1,104 @@
+import { useState } from 'react'
+import GeneratePanel from './pages/GeneratePanel'
+import PreviewPanel from './pages/PreviewPanel'
+import HistoryPanel from './pages/HistoryPanel'
+
+export type TabType = 'icon' | 'background'
+export type ViewType = 'generate' | 'preview' | 'history'
+
+export interface GeneratedImage {
+  id: string
+  url: string
+  prompt: string
+  style: string
+  type: TabType
+  createdAt: number
+}
+
+function App(): JSX.Element {
+  const [activeTab, setActiveTab] = useState<TabType>('icon')
+  const [view, setView] = useState<ViewType>('generate')
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([])
+  const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null)
+  const [isDark, setIsDark] = useState(true)
+
+  return (
+    <div className={isDark ? 'dark' : ''}>
+      <div className="flex flex-col h-screen bg-[#0A0A0A] text-[#FAFAFA] dark:bg-[#0A0A0A] dark:text-[#FAFAFA]">
+        {/* Header */}
+        <header className="flex items-center justify-between px-6 py-3 border-b border-[#2A2A2A] shrink-0">
+          <div className="flex items-center gap-6">
+            <span className="text-lg font-semibold tracking-tight text-white">GenCanvas</span>
+            <nav className="flex gap-1">
+              <button
+                onClick={() => { setActiveTab('icon'); setView('generate') }}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'icon' && view !== 'history'
+                    ? 'bg-[#7C3AED] text-white'
+                    : 'text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A]'
+                }`}
+              >
+                🎨 アイコン
+              </button>
+              <button
+                onClick={() => { setActiveTab('background'); setView('generate') }}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'background' && view !== 'history'
+                    ? 'bg-[#7C3AED] text-white'
+                    : 'text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A]'
+                }`}
+              >
+                🖼 背景
+              </button>
+            </nav>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setView('history')}
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+                view === 'history'
+                  ? 'bg-[#7C3AED] text-white'
+                  : 'text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A]'
+              }`}
+            >
+              🕐 履歴
+            </button>
+            <button
+              onClick={() => setIsDark(!isDark)}
+              className="px-3 py-1.5 rounded-md text-sm text-[#A0A0A0] hover:text-white hover:bg-[#1A1A1A] transition-colors"
+            >
+              {isDark ? '☀️' : '🌙'}
+            </button>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="flex flex-1 overflow-hidden">
+          {view === 'history' ? (
+            <HistoryPanel
+              images={generatedImages}
+              onSelect={(img) => { setSelectedImage(img); setView('preview') }}
+            />
+          ) : view === 'preview' && selectedImage ? (
+            <PreviewPanel
+              image={selectedImage}
+              onBack={() => setView('generate')}
+              onEvolve={(img) => setGeneratedImages(prev => [img, ...prev])}
+            />
+          ) : (
+            <GeneratePanel
+              activeTab={activeTab}
+              onGenerated={(images) => {
+                setGeneratedImages(prev => [...images, ...prev])
+                setSelectedImage(images[0])
+                setView('preview')
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default App
