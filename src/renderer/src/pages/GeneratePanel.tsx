@@ -82,7 +82,8 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const generateImageViaMain = (url: string): Promise<string> => (window as any).api.generateImage(url)
+  const generateImageViaMain = (p: string, w: number, h: number): Promise<string> =>
+    (window as any).api.generateImage(p, w, h)
 
   const handleGenerate = async (): Promise<void> => {
     if (!prompt.trim() || isGenerating) return
@@ -90,21 +91,16 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
     setGenerateProgress('')
 
     try {
-      const model = quality > 0.5 ? 'flux' : 'turbo'
       const size = activeTab === 'icon'
-        ? { w: quality > 0.5 ? 1024 : 512, h: quality > 0.5 ? 1024 : 512 }
+        ? { w: 1024, h: 1024 }
         : BG_SIZES.find(s => s.id === selectedSize) || { w: 1920, h: 1080 }
 
       const builtPrompt = buildPrompt(prompt)
-      const seed = Math.floor(Math.random() * 1000000)
       const results: GeneratedImage[] = []
 
-      // 順番に1枚ずつ生成（レート制限対策）
       for (let i = 0; i < count; i++) {
         setGenerateProgress(count > 1 ? `生成中... (${i + 1}/${count})` : '生成中...')
-        const encodedPrompt = encodeURIComponent(builtPrompt)
-        const apiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${size.w}&height=${size.h}&model=${model}&seed=${seed + i}&nologo=true`
-        const blobUrl = await generateImageViaMain(apiUrl)
+        const blobUrl = await generateImageViaMain(builtPrompt, size.w, size.h)
         results.push({
           id: `${Date.now()}-${i}`,
           url: blobUrl,
@@ -119,8 +115,10 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err)
       const msg =
-        raw === 'TIMEOUT' ? 'タイムアウトしました。もう一度お試しください。' :
-        raw === 'RATE_LIMIT' ? 'サーバーが混雑しています。しばらく待ってから再試行してください。' :
+        raw.includes('NO_TOKEN') ? 'APIトークンが設定されていません。⚙️から設定してください。' :
+        raw.includes('INVALID_TOKEN') ? 'APIトークンが無効です。⚙️から再設定してください。' :
+        raw.includes('REQUEST_TIMEOUT') ? '生成タイムアウト。再度お試しください。' :
+        raw.includes('MODEL_LOADING') ? 'AIモデル準備中です。少し待ってから再試行してください。' :
         `生成に失敗しました。(${raw})`
       alert(msg)
     } finally {

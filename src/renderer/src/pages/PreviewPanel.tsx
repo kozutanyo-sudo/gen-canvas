@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { GeneratedImage } from '../App'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const generateImageViaMain = (url: string): Promise<string> => (window as any).api.generateImage(url)
+const generateImageViaMain = (p: string, w: number, h: number): Promise<string> =>
+  (window as any).api.generateImage(p, w, h)
 
 interface Props {
   batch: GeneratedImage[]
@@ -18,11 +19,7 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
   const [padding, setPadding] = useState(0)
   const [isEvolving, setIsEvolving] = useState(false)
 
-  const buildEvolveUrl = (prompt: string): string => {
-    const seed = Math.floor(Math.random() * 1000000)
-    const encoded = encodeURIComponent(prompt)
-    return `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&model=flux&seed=${seed}&nologo=true`
-  }
+  const size = selectedImage.type === 'icon' ? { w: 1024, h: 1024 } : { w: 1920, h: 1080 }
 
   // 追加指示ありで進化
   const handleEvolve = async (): Promise<void> => {
@@ -30,8 +27,7 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
     setIsEvolving(true)
     try {
       const newPrompt = `${selectedImage.prompt}, ${evolvePrompt}`
-      const url = buildEvolveUrl(newPrompt)
-      const dataUrl = await generateImageViaMain(url)
+      const dataUrl = await generateImageViaMain(newPrompt, size.w, size.h)
       onEvolve({ id: `${Date.now()}`, url: dataUrl, prompt: newPrompt, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now() })
       setEvolvePrompt('')
     } catch {
@@ -46,8 +42,7 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
     if (isEvolving) return
     setIsEvolving(true)
     try {
-      const url = buildEvolveUrl(selectedImage.prompt)
-      const dataUrl = await generateImageViaMain(url)
+      const dataUrl = await generateImageViaMain(selectedImage.prompt, size.w, size.h)
       onEvolve({ id: `${Date.now()}`, url: dataUrl, prompt: selectedImage.prompt, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now() })
     } catch {
       alert('再生成に失敗しました。再度お試しください。')

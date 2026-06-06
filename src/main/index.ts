@@ -1,8 +1,29 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import * as https from 'https'
-import * as http from 'http'
+import * as fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+
+interface Settings {
+  hfToken: string
+}
+
+function getSettingsPath(): string {
+  return join(app.getPath('userData'), 'settings.json')
+}
+
+function loadSettings(): Settings {
+  try {
+    const data = fs.readFileSync(getSettingsPath(), 'utf-8')
+    return JSON.parse(data)
+  } catch {
+    return { hfToken: '' }
+  }
+}
+
+function saveSettings(settings: Settings): void {
+  fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2))
+}
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -38,30 +59,53 @@ function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms))
 }
 
-// 1回だけ試みる（リダイレクト対応）
-function tryFetch(url: string): Promise<string> {
+function generateWithHuggingFace(
+  prompt: string,
+  width: number,
+  height: number,
+  token: string
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    const lib = url.startsWith('https') ? https : http
-    const req = lib.get(url, {
-      timeout: 30000,
+    const body = JSON.stringify({
+      inputs: prompt,
+      parameters: { width, height, num_inference_steps: 4, guidance_scale: 3.5 }
+    })
+
+    const options = {
+      hostname: 'router.huggingface.co',
+      path: '/hf-inference/models/black-forest-labs/FLUX.1-schnell',
+      method: 'POST',
       headers: {
-        'User-Agent': 'GenCanvas/1.0 (Desktop App)',
-        'Accept': 'image/png,image/jpeg,image/*'
-      }
-    }, (res) => {
-      // リダイレクト追跡
-      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-        tryFetch(res.headers.location).then(resolve).catch(reject)
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 120000
+    }
+
+    const req = https.request(options, (res) => {
+      console.log(`[GenCanvas] HF Response: ${res.statusCode}`)
+
+      if (res.statusCode === 503) {
+        reject(new Error('MODEL_LOADING'))
         return
       }
-
-      if (res.statusCode === 402) {
+      if (res.statusCode === 401 || res.statusCode === 403) {
+        reject(new Error('INVALID_TOKEN'))
+        return
+      }
+      if (res.statusCode === 429) {
         reject(new Error('RATE_LIMIT'))
         return
       }
-
       if (!res.statusCode || res.statusCode >= 400) {
-        reject(new Error(`HTTP_${res.statusCode}`))
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () => {
+          const body2 = Buffer.concat(chunks).toString()
+          console.error(`[GenCanvas] HF Error body: ${body2.slice(0, 200)}`)
+          reject(new Error(`HTTP_${res.statusCode}`))
+        })
         return
       }
 
@@ -70,11 +114,12 @@ function tryFetch(url: string): Promise<string> {
       res.on('end', () => {
         const buffer = Buffer.concat(chunks)
         if (buffer.length < 1000) {
-          // 小さすぎる = エラーレスポンス
           reject(new Error(`SMALL_RESPONSE_${buffer.length}`))
           return
         }
-        resolve(`data:image/png;base64,${buffer.toString('base64')}`)
+        const ct = res.headers['content-type'] || 'image/png'
+        const mime = ct.startsWith('image/') ? ct.split(';')[0].trim() : 'image/png'
+        resolve(`data:${mime};base64,${buffer.toString('base64')}`)
       })
       res.on('error', reject)
     })
@@ -84,49 +129,59 @@ function tryFetch(url: string): Promise<string> {
       req.destroy()
       reject(new Error('REQUEST_TIMEOUT'))
     })
+    req.write(body)
+    req.end()
   })
 }
 
-// レート制限は5秒ごとに最大2分間リトライ
-async function downloadWithPolling(url: string): Promise<string> {
-  const MAX_MS = 120_000
-  const POLL_MS = 5_000
-  const start = Date.now()
-  let attempts = 0
-
-  while (Date.now() - start < MAX_MS) {
-    attempts++
+async function generateWithRetry(
+  prompt: string,
+  width: number,
+  height: number,
+  token: string
+): Promise<string> {
+  const MAX_ATTEMPTS = 4
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+    console.log(`[GenCanvas] 試行 #${i}: ${prompt.slice(0, 60)}...`)
     try {
-      console.log(`[GenCanvas] 試行 #${attempts} (経過 ${Math.round((Date.now() - start) / 1000)}s)`)
-      const result = await tryFetch(url)
-      console.log(`[GenCanvas] 成功 (試行 #${attempts})`)
-      return result
+      return await generateWithHuggingFace(prompt, width, height, token)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[GenCanvas] エラー: ${msg}`)
 
-      if (msg === 'RATE_LIMIT') {
-        const elapsed = Date.now() - start
-        if (elapsed + POLL_MS < MAX_MS) {
-          console.log(`[GenCanvas] レート制限 - ${POLL_MS / 1000}秒後に再試行`)
-          await sleep(POLL_MS)
-          continue
-        }
-        throw new Error('RATE_LIMIT_TIMEOUT')
+      if (msg === 'MODEL_LOADING' && i < MAX_ATTEMPTS) {
+        console.log(`[GenCanvas] モデルロード中 - 15秒後に再試行`)
+        await sleep(15000)
+        continue
       }
-
-      // レート制限以外のエラーは即throw
+      if (msg === 'RATE_LIMIT' && i < MAX_ATTEMPTS) {
+        console.log(`[GenCanvas] レート制限 - 10秒後に再試行`)
+        await sleep(10000)
+        continue
+      }
       throw err
     }
   }
-
-  throw new Error('TIMEOUT_2MIN')
+  throw new Error('MAX_ATTEMPTS')
 }
 
-ipcMain.handle('generate-image', async (_event, url: string): Promise<string> => {
-  console.log(`[GenCanvas] 生成開始: ${url.slice(0, 100)}...`)
-  return downloadWithPolling(url)
+ipcMain.handle('get-settings', () => loadSettings())
+
+ipcMain.handle('set-settings', (_event, settings: Settings) => {
+  saveSettings(settings)
+  return true
 })
+
+ipcMain.handle(
+  'generate-image',
+  async (_event, prompt: string, width: number, height: number): Promise<string> => {
+    const settings = loadSettings()
+    if (!settings.hfToken) {
+      throw new Error('NO_TOKEN')
+    }
+    return generateWithRetry(prompt, width, height, settings.hfToken)
+  }
+)
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.gencanvas.app')
