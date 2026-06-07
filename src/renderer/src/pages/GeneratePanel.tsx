@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { TabType, GeneratedImage } from '../App'
+import type { ToastType } from '../components/Toast'
 
 // ---- スタイル定義 -------------------------------------------------------
 
@@ -48,6 +49,41 @@ const BG_SIZES = [
   { id: 'youtube', label: '▶️ YouTube',       w: 2560, h: 1440 },
 ]
 
+// ---- プロンプトビルダー タグ定義 -----------------------------------------
+
+const MOOD_TAGS = [
+  { ja: '明るい',     en: 'bright cheerful atmosphere' },
+  { ja: '神秘的',     en: 'mysterious dark atmosphere' },
+  { ja: '幻想的',     en: 'dreamlike fantastical mood' },
+  { ja: 'レトロ',     en: 'nostalgic vintage vibe' },
+  { ja: '近未来',     en: 'futuristic sci-fi mood' },
+  { ja: '穏やか',     en: 'calm serene peaceful atmosphere' },
+  { ja: 'ドラマチック', en: 'dramatic cinematic mood' },
+  { ja: '神聖',       en: 'sacred ethereal holy atmosphere' },
+]
+
+const LIGHTING_TAGS = [
+  { ja: '自然光',   en: 'soft natural daylight' },
+  { ja: '夕焼け',   en: 'golden hour sunset lighting' },
+  { ja: '夜・月光', en: 'moonlit night scene' },
+  { ja: 'スタジオ', en: 'professional studio lighting' },
+  { ja: '逆光',     en: 'backlit silhouette rim light' },
+  { ja: 'ネオン光', en: 'neon glow electric light' },
+  { ja: '霧・霞',   en: 'misty atmospheric haze volumetric fog' },
+  { ja: '発光',     en: 'self-luminous glowing light emission' },
+]
+
+const COMPOSITION_TAGS = [
+  { ja: 'クローズアップ', en: 'extreme close-up macro detail' },
+  { ja: '俯瞰',           en: 'bird eye view top-down perspective' },
+  { ja: '対称構図',       en: 'perfect symmetrical composition' },
+  { ja: '広角',           en: 'wide angle panoramic view' },
+  { ja: '中央配置',       en: 'centered hero subject composition' },
+  { ja: '奥行き',         en: 'deep perspective strong depth of field' },
+  { ja: 'ローアングル',   en: 'low angle worm eye view' },
+  { ja: '三分割',         en: 'rule of thirds dynamic composition' },
+]
+
 const STYLE_COLORS: Record<string, string> = {
   flat: '#4F46E5', '3d': '#059669', minimal: '#6B7280', gradient: '#EC4899',
   pixel: '#10B981', line: '#1F2937', watercolor: '#8B5CF6', clay: '#F59E0B',
@@ -94,18 +130,42 @@ function hasJapanese(text: string): boolean {
   return /[぀-ヿ一-鿿]/.test(text)
 }
 
+// アップロード画像を最大サイズにリサイズしてbase64返却
+function resizeToBase64(file: File, maxPx = 1024): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const ratio = Math.min(maxPx / img.width, maxPx / img.height, 1)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * ratio)
+      canvas.height = Math.round(img.height * ratio)
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
 // ---- コンポーネント -------------------------------------------------------
 
 interface Props {
   activeTab: TabType
   onGenerated: (images: GeneratedImage[]) => void
+  showToast: (msg: string, type?: ToastType) => void
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const api = (): any => (window as any).api
 
-export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.Element {
+export default function GeneratePanel({ activeTab, onGenerated, showToast }: Props): JSX.Element {
   const [prompt, setPrompt]               = useState('')
+  const [favorites, setFavorites]         = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('gc-prompt-fav') || '[]') } catch { return [] }
+  })
+  const [showFavs, setShowFavs]           = useState(false)
   const [selectedStyle, setSelectedStyle] = useState('flat')
   const [color, setColor]                 = useState('#7C3AED')
   const [count, setCount]                 = useState(1)
@@ -117,6 +177,41 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
   const [editedPrompt, setEditedPrompt]   = useState('')
   const [isTranslating, setIsTranslating] = useState(false)
 
+  // 参照画像
+  const [refImage, setRefImage]           = useState<string | null>(null)
+  const [refStrength, setRefStrength]     = useState(0.75)
+
+  // プロンプトビルダー
+  const [showBuilder, setShowBuilder]     = useState(false)
+  const [selMoods, setSelMoods]           = useState<string[]>([])
+  const [selLightings, setSelLightings]   = useState<string[]>([])
+  const [selComps, setSelComps]           = useState<string[]>([])
+
+  // 詳細パラメータ
+  const [showAdvanced, setShowAdvanced]   = useState(false)
+  const [numSteps, setNumSteps]           = useState(6)
+  const [guidanceScale, setGuidanceScale] = useState(3.5)
+  const [seed, setSeed]                   = useState(-1)
+
+  // 文字・記号排除
+  const [strictNoText, setStrictNoText]   = useState(true)
+
+  const addFavorite = (): void => {
+    if (!prompt.trim()) return
+    const next = [prompt.trim(), ...favorites.filter(f => f !== prompt.trim())].slice(0, 20)
+    setFavorites(next)
+    localStorage.setItem('gc-prompt-fav', JSON.stringify(next))
+    showToast('お気に入りに保存しました', 'success')
+  }
+  const removeFavorite = (fav: string): void => {
+    const next = favorites.filter(f => f !== fav)
+    setFavorites(next)
+    localStorage.setItem('gc-prompt-fav', JSON.stringify(next))
+  }
+
+  const toggleTag = (arr: string[], item: string, set: (v: string[]) => void): void =>
+    set(arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item])
+
   const styles = activeTab === 'icon' ? ICON_STYLES : BG_STYLES
 
   const handleStyleSelect = (id: string): void => {
@@ -124,19 +219,29 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
     if (STYLE_COLORS[id]) setColor(STYLE_COLORS[id])
   }
 
+  // 文字・記号排除フレーズ（FLUXはネガティブプロンプト非対応のためポジティブ側で列挙）
+  const NO_TEXT_PHRASE = strictNoText
+    ? 'absolutely no text, no letters, no numbers, no words, no characters, no glyphs, no symbols, no typography, no calligraphy, no handwriting, no inscriptions, no labels, no captions, no watermark, no logo, no signature, completely text-free'
+    : 'no text, no watermark'
+
   // FLUXに最適化された英語プロンプトを組み立て
   const buildEnglishPrompt = (subject: string): string => {
     const styleObj = styles.find(s => s.id === selectedStyle)!
     const colorName = hexToColorName(color)
+    const moodEn  = selMoods.map(ja => MOOD_TAGS.find(t => t.ja === ja)?.en ?? '').filter(Boolean).join(', ')
+    const lightEn = selLightings.map(ja => LIGHTING_TAGS.find(t => t.ja === ja)?.en ?? '').filter(Boolean).join(', ')
+    const compEn  = selComps.map(ja => COMPOSITION_TAGS.find(t => t.ja === ja)?.en ?? '').filter(Boolean).join(', ')
 
     if (activeTab === 'icon') {
       return [
         subject,
         styleObj.prompt,
         `${colorName} color scheme`,
-        'white background, centered, no text, no watermark',
+        moodEn, lightEn, compEn,
+        'white background, centered',
+        NO_TEXT_PHRASE,
         'professional icon design, high quality, sharp',
-      ].join(', ')
+      ].filter(Boolean).join(', ')
     } else {
       const sizeObj = BG_SIZES.find(s => s.id === selectedSize)
       const ratio = sizeObj ? (sizeObj.w > sizeObj.h ? 'wide landscape format' : 'tall portrait format') : 'landscape'
@@ -144,10 +249,11 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
         subject,
         styleObj.prompt,
         `${colorName} dominant color palette`,
+        moodEn, lightEn, compEn,
         ratio,
-        'no text, no signs, no writing, no watermark, no UI elements',
+        NO_TEXT_PHRASE, 'no signs, no UI elements',
         'stunning visuals, masterpiece quality',
-      ].join(', ')
+      ].filter(Boolean).join(', ')
     }
   }
 
@@ -170,7 +276,7 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
       setEditedPrompt(built)
       setShowPrompt(true)
     } catch {
-      alert('翻訳に失敗しました。')
+      showToast('翻訳に失敗しました', 'error')
     } finally {
       setIsTranslating(false)
     }
@@ -193,22 +299,32 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
 
       for (let i = 0; i < count; i++) {
         setProgress(count > 1 ? `生成中... (${i+1}/${count})` : '生成中...')
-        const url = await api().generateImage(finalPrompt, sizeObj.w, sizeObj.h)
+        const url = await api().generateImage(finalPrompt, sizeObj.w, sizeObj.h, {
+          numSteps,
+          guidanceScale,
+          seed,
+          refImage: refImage ?? undefined,
+          strength: refStrength,
+        })
         results.push({
           id: `${Date.now()}-${i}`, url,
-          prompt: prompt, style: selectedStyle,
-          type: activeTab, createdAt: Date.now(),
+          prompt, englishPrompt: finalPrompt,
+          style: selectedStyle, type: activeTab, createdAt: Date.now(),
+          params: { steps: numSteps, guidance: guidanceScale, seed },
         })
       }
       onGenerated(results)
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err)
-      alert(
-        raw.includes('NO_TOKEN')       ? 'APIトークンが未設定です。⚙️から設定してください。' :
-        raw.includes('INVALID_TOKEN')  ? 'APIトークンが無効です。⚙️から再設定してください。' :
-        raw.includes('REQUEST_TIMEOUT')? '生成タイムアウト。再試行してください。' :
-        raw.includes('MODEL_LOADING')  ? 'AIモデル準備中です。少し待って再試行してください。' :
-        `生成に失敗しました。(${raw})`
+      showToast(
+        raw.includes('NO_TOKEN')        ? 'APIトークンが未設定です（⚙️から設定）' :
+        raw.includes('INVALID_TOKEN')   ? 'APIトークンが無効です（⚙️から再設定）' :
+        raw.includes('REQUEST_TIMEOUT') ? '生成タイムアウト — もう一度お試しください' :
+        raw.includes('MODEL_LOADING')   ? 'AIモデル準備中 — しばらく待って再試行してください' :
+        raw.includes('RATE_LIMIT')      ? 'レート制限中 — しばらく待って再試行してください' :
+        raw.includes('MAX_ATTEMPTS')    ? '複数回失敗しました — 時間を置いて再試行してください' :
+        '生成に失敗しました — ネットワーク接続を確認してください',
+        'error'
       )
     } finally {
       setIsGenerating(false)
@@ -224,17 +340,59 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
       {/* ===== 左パネル ===== */}
       <div className="w-80 border-r border-[#2A2A2A] flex flex-col overflow-y-auto p-5 gap-5 shrink-0">
 
+        {/* ===== 参照画像 ===== */}
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-semibold text-[#AAAAAA]">参照画像 <span className="text-[#555] font-normal text-[10px]">（任意・イメージの雰囲気を伝える）</span></label>
+          {refImage ? (
+            <div className="relative">
+              <img src={refImage} alt="ref" className="w-full h-28 object-cover rounded-lg border border-[#3A3AED]/40" />
+              <button onClick={() => setRefImage(null)}
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white text-[10px] flex items-center justify-center hover:bg-red-600">✕</button>
+              <div className="mt-2">
+                <div className="flex justify-between mb-1">
+                  <span className="text-[10px] text-[#AAAAAA]">参照の強さ</span>
+                  <span className="text-[10px] text-[#888]">{Math.round(refStrength * 100)}%</span>
+                </div>
+                <input type="range" min="10" max="95" value={Math.round(refStrength * 100)}
+                  onChange={e => setRefStrength(+e.target.value / 100)}
+                  className="w-full accent-[#7C3AED]" />
+                <div className="flex justify-between text-[9px] text-[#555] mt-0.5">
+                  <span>テキスト優先</span><span>画像優先</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center h-20 border border-dashed border-[#3A3A3A] rounded-lg cursor-pointer hover:border-[#7C3AED] hover:bg-[#7C3AED]/5 transition-colors text-[#666] hover:text-[#AAAAAA]">
+              <span className="text-xl mb-1">📎</span>
+              <span className="text-[10px]">クリックまたはドロップで画像を追加</span>
+              <input type="file" accept="image/*" className="hidden"
+                onChange={async e => {
+                  const f = e.target.files?.[0]
+                  if (f) setRefImage(await resizeToBase64(f))
+                  e.target.value = ''
+                }} />
+            </label>
+          )}
+        </div>
+
         {/* プロンプト */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-[#AAAAAA]">
               {activeTab === 'icon' ? 'どんなアイコン？' : 'どんな背景？'}
             </label>
-            {isJa && (
-              <span className="text-[10px] text-[#F59E0B] bg-[#F59E0B]/10 px-1.5 py-0.5 rounded">
-                🌐 日本語検出
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {isJa && (
+                <span className="text-[10px] text-[#F59E0B] bg-[#F59E0B]/10 px-1.5 py-0.5 rounded">
+                  🌐
+                </span>
+              )}
+              <button onClick={addFavorite} disabled={!prompt.trim()}
+                title="お気に入りに保存"
+                className="text-[#555] hover:text-[#F59E0B] transition-colors disabled:opacity-30 text-base leading-none">
+                ☆
+              </button>
+            </div>
           </div>
           <textarea
             value={prompt}
@@ -246,11 +404,77 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
             className="w-full bg-[#111111] border border-[#2A2A2A] rounded-lg px-3 py-2 text-sm text-white placeholder-[#555] resize-none focus:outline-none focus:border-[#7C3AED] transition-colors"
             onKeyDown={e => { if (e.key==='Enter' && (e.ctrlKey||e.metaKey)) handleGenerate() }}
           />
+          {/* お気に入り */}
+          {favorites.length > 0 && (
+            <div>
+              <button onClick={() => setShowFavs(b => !b)}
+                className="flex items-center gap-1 text-[10px] text-[#555] hover:text-[#AAAAAA] transition-colors">
+                <span>★ お気に入り {favorites.length}件</span>
+                <span>{showFavs ? '▲' : '▼'}</span>
+              </button>
+              {showFavs && (
+                <div className="mt-1.5 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                  {favorites.map(fav => (
+                    <div key={fav} className="flex items-center gap-1 group">
+                      <button onClick={() => { setPrompt(fav); setShowFavs(false) }}
+                        className="flex-1 text-left text-[10px] text-[#888] hover:text-white truncate bg-[#111] border border-[#2A2A2A] rounded px-2 py-1 hover:border-[#555] transition-colors">
+                        {fav}
+                      </button>
+                      <button onClick={() => removeFavorite(fav)}
+                        className="text-[#444] hover:text-red-500 text-[10px] shrink-0 opacity-0 group-hover:opacity-100 transition-all px-1">
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 翻訳ヒント */}
           {isJa && (
             <div className="text-[10px] text-[#888] bg-[#111] border border-[#2A2A2A] rounded-lg px-3 py-2">
               💡 英語のほうが精度が高いです。<br />
               下の「🌐 翻訳して生成」で自動変換できます。
+            </div>
+          )}
+        </div>
+
+        {/* ===== プロンプトビルダー ===== */}
+        <div className="flex flex-col gap-2">
+          <button onClick={() => setShowBuilder(b => !b)}
+            className="flex items-center justify-between text-xs font-semibold text-[#AAAAAA] hover:text-white transition-colors">
+            <span>🎭 プロンプトビルダー <span className="font-normal text-[#555]">（ムード・光・構図）</span></span>
+            <span className="text-[#555]">{showBuilder ? '▲' : '▼'}</span>
+          </button>
+          {showBuilder && (
+            <div className="flex flex-col gap-3 bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg p-3">
+              {([
+                { label: 'ムード', tags: MOOD_TAGS, sel: selMoods, setSel: setSelMoods },
+                { label: 'ライティング', tags: LIGHTING_TAGS, sel: selLightings, setSel: setSelLightings },
+                { label: '構図', tags: COMPOSITION_TAGS, sel: selComps, setSel: setSelComps },
+              ] as const).map(({ label, tags, sel, setSel }) => (
+                <div key={label}>
+                  <p className="text-[10px] text-[#777] mb-1.5">{label}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {tags.map(t => (
+                      <button key={t.ja}
+                        onClick={() => toggleTag(sel as string[], t.ja, setSel as (v: string[]) => void)}
+                        className={`px-2 py-0.5 rounded-full text-[10px] border transition-colors ${
+                          sel.includes(t.ja)
+                            ? 'bg-[#7C3AED]/30 border-[#7C3AED] text-white'
+                            : 'border-[#2A2A2A] text-[#666] hover:border-[#555] hover:text-[#AAAAAA]'
+                        }`}>
+                        {t.ja}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {(selMoods.length > 0 || selLightings.length > 0 || selComps.length > 0) && (
+                <button onClick={() => { setSelMoods([]); setSelLightings([]); setSelComps([]) }}
+                  className="text-[10px] text-[#555] hover:text-[#888] text-right">すべてクリア</button>
+              )}
             </div>
           )}
         </div>
@@ -335,6 +559,77 @@ export default function GeneratePanel({ activeTab, onGenerated }: Props): JSX.El
                 }`}>{n}</button>
             ))}
           </div>
+        </div>
+
+        {/* ===== 文字・記号排除 ===== */}
+        <button
+          onClick={() => setStrictNoText(v => !v)}
+          className={`flex items-center justify-between w-full px-3 py-2 rounded-lg border text-xs transition-colors ${
+            strictNoText
+              ? 'bg-[#7C3AED]/15 border-[#7C3AED]/60 text-white'
+              : 'bg-[#111] border-[#2A2A2A] text-[#777]'
+          }`}
+        >
+          <span>
+            <span className="mr-1.5">🚫</span>
+            文字・記号を生成しない
+            {strictNoText && <span className="ml-1.5 text-[10px] text-[#A78BFA]">（強）</span>}
+          </span>
+          <div className={`w-9 h-5 rounded-full relative transition-colors ${strictNoText ? 'bg-[#7C3AED]' : 'bg-[#2A2A2A]'}`}>
+            <div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 transition-all ${strictNoText ? 'right-0.5' : 'left-0.5'}`} />
+          </div>
+        </button>
+
+        {/* ===== 詳細パラメータ ===== */}
+        <div className="flex flex-col gap-2">
+          <button onClick={() => setShowAdvanced(b => !b)}
+            className="flex items-center justify-between text-xs font-semibold text-[#AAAAAA] hover:text-white transition-colors">
+            <span>⚙️ 詳細パラメータ</span>
+            <span className="text-[#555]">{showAdvanced ? '▲' : '▼'}</span>
+          </button>
+          {showAdvanced && (
+            <div className="flex flex-col gap-3 bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg p-3">
+              <div>
+                <div className="flex justify-between mb-1">
+                  <label className="text-[10px] text-[#AAAAAA]">ステップ数 <span className="text-[#555]">（多いほど高品質・低速）</span></label>
+                  <span className="text-[10px] text-[#888]">{numSteps}</span>
+                </div>
+                <input type="range" min="4" max="20" value={numSteps}
+                  onChange={e => setNumSteps(+e.target.value)}
+                  className="w-full accent-[#7C3AED]" />
+                <div className="flex justify-between text-[9px] text-[#555] mt-0.5">
+                  <span>速い (4)</span><span>高品質 (20)</span>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between mb-1">
+                  <label className="text-[10px] text-[#AAAAAA]">ガイダンス強度 <span className="text-[#555]">（プロンプト追従度）</span></label>
+                  <span className="text-[10px] text-[#888]">{guidanceScale.toFixed(1)}</span>
+                </div>
+                <input type="range" min="10" max="100" value={Math.round(guidanceScale * 10)}
+                  onChange={e => setGuidanceScale(+e.target.value / 10)}
+                  className="w-full accent-[#7C3AED]" />
+                <div className="flex justify-between text-[9px] text-[#555] mt-0.5">
+                  <span>自由 (1.0)</span><span>忠実 (10.0)</span>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between mb-1">
+                  <label className="text-[10px] text-[#AAAAAA]">シード値 <span className="text-[#555]">（-1=ランダム・固定で再現可能）</span></label>
+                  <span className="text-[10px] text-[#888]">{seed === -1 ? 'ランダム' : seed}</span>
+                </div>
+                <div className="flex gap-2">
+                  <input type="number" min="-1" max="9999999" value={seed}
+                    onChange={e => setSeed(+e.target.value)}
+                    className="flex-1 bg-[#111] border border-[#2A2A2A] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-[#7C3AED]" />
+                  <button onClick={() => setSeed(Math.floor(Math.random() * 9999999))}
+                    className="px-2 py-1 text-[10px] border border-[#2A2A2A] rounded text-[#777] hover:text-white hover:border-[#555]">🎲</button>
+                  <button onClick={() => setSeed(-1)}
+                    className="px-2 py-1 text-[10px] border border-[#2A2A2A] rounded text-[#777] hover:text-white hover:border-[#555]">∞</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ボタン群 */}

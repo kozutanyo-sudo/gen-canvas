@@ -1,4 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, clipboard, nativeImage, dialog } from 'electron'
+import archiver from 'archiver'
 import { join } from 'path'
 import * as https from 'https'
 import * as fs from 'fs'
@@ -6,6 +7,25 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
 interface Settings {
   hfToken: string
+}
+
+interface GenerateOptions {
+  numSteps?: number
+  guidanceScale?: number
+  seed?: number
+  refImage?: string
+  strength?: number
+}
+
+interface HistoryMetaItem {
+  id: string
+  filename: string
+  prompt: string
+  englishPrompt?: string
+  style: string
+  type: string
+  createdAt: number
+  params?: { steps: number; guidance: number; seed: number }
 }
 
 function getSettingsPath(): string {
@@ -23,6 +43,26 @@ function loadSettings(): Settings {
 
 function saveSettings(settings: Settings): void {
   fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2))
+}
+
+function getHistoryDir(): string {
+  return join(app.getPath('userData'), 'history')
+}
+
+function getHistoryMetaPath(): string {
+  return join(getHistoryDir(), 'metadata.json')
+}
+
+function loadHistoryMeta(): HistoryMetaItem[] {
+  try {
+    return JSON.parse(fs.readFileSync(getHistoryMetaPath(), 'utf-8'))
+  } catch {
+    return []
+  }
+}
+
+function saveHistoryMeta(meta: HistoryMetaItem[]): void {
+  fs.writeFileSync(getHistoryMetaPath(), JSON.stringify(meta))
 }
 
 function createWindow(): void {
@@ -63,13 +103,19 @@ function generateWithHuggingFace(
   prompt: string,
   width: number,
   height: number,
-  token: string
+  token: string,
+  options: GenerateOptions = {}
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      inputs: prompt,
-      parameters: { width, height, num_inference_steps: 4, guidance_scale: 3.5 }
-    })
+    const { numSteps = 4, guidanceScale = 3.5, seed, refImage, strength = 0.75 } = options
+    const parameters: Record<string, unknown> = { width, height, num_inference_steps: numSteps, guidance_scale: guidanceScale }
+    if (seed !== undefined && seed >= 0) parameters.seed = seed
+    if (refImage) parameters.strength = strength
+
+    const bodyObj: Record<string, unknown> = { inputs: prompt, parameters }
+    if (refImage) bodyObj.image = refImage.replace(/^data:image\/\w+;base64,/, '')
+
+    const body = JSON.stringify(bodyObj)
 
     const options = {
       hostname: 'router.huggingface.co',
@@ -138,13 +184,14 @@ async function generateWithRetry(
   prompt: string,
   width: number,
   height: number,
-  token: string
+  token: string,
+  options: GenerateOptions = {}
 ): Promise<string> {
   const MAX_ATTEMPTS = 4
   for (let i = 1; i <= MAX_ATTEMPTS; i++) {
     console.log(`[GenCanvas] 試行 #${i}: ${prompt.slice(0, 60)}...`)
     try {
-      return await generateWithHuggingFace(prompt, width, height, token)
+      return await generateWithHuggingFace(prompt, width, height, token, options)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[GenCanvas] エラー: ${msg}`)
@@ -221,14 +268,119 @@ ipcMain.handle('set-settings', (_event, settings: Settings) => {
 
 ipcMain.handle(
   'generate-image',
-  async (_event, prompt: string, width: number, height: number): Promise<string> => {
+  async (_event, prompt: string, width: number, height: number, options?: GenerateOptions): Promise<string> => {
     const settings = loadSettings()
     if (!settings.hfToken) {
       throw new Error('NO_TOKEN')
     }
-    return generateWithRetry(prompt, width, height, settings.hfToken)
+    return generateWithRetry(prompt, width, height, settings.hfToken, options)
   }
 )
+
+ipcMain.handle('save-history-item', (_event, item: {
+  id: string; url: string; prompt: string; englishPrompt?: string;
+  style: string; type: string; createdAt: number;
+  params?: { steps: number; guidance: number; seed: number }
+}): boolean => {
+  try {
+    const dir = getHistoryDir()
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+
+    const match = item.url.match(/^data:image\/(\w+);base64,(.+)$/)
+    if (!match) return false
+    const [, ext, data] = match
+    const filename = `${item.id}.${ext}`
+    fs.writeFileSync(join(dir, filename), Buffer.from(data, 'base64'))
+
+    let meta = loadHistoryMeta()
+    meta = meta.filter(m => m.id !== item.id)
+    meta.unshift({ id: item.id, filename, prompt: item.prompt, englishPrompt: item.englishPrompt, style: item.style, type: item.type, createdAt: item.createdAt, params: item.params })
+    if (meta.length > 200) meta = meta.slice(0, 200)
+    saveHistoryMeta(meta)
+    return true
+  } catch (e) {
+    console.error('[GenCanvas] save-history-item error:', e)
+    return false
+  }
+})
+
+ipcMain.handle('load-history', (): object[] => {
+  const dir = getHistoryDir()
+  const meta = loadHistoryMeta()
+  return meta.map(item => {
+    try {
+      const buffer = fs.readFileSync(join(dir, item.filename))
+      const ext = item.filename.split('.').pop() || 'png'
+      return {
+        id: item.id,
+        url: `data:image/${ext};base64,${buffer.toString('base64')}`,
+        prompt: item.prompt,
+        englishPrompt: item.englishPrompt || '',
+        style: item.style,
+        type: item.type,
+        createdAt: item.createdAt,
+        params: item.params,
+      }
+    } catch {
+      return null
+    }
+  }).filter(Boolean)
+})
+
+ipcMain.handle('delete-history-item', (_event, id: string): boolean => {
+  try {
+    const meta = loadHistoryMeta()
+    const item = meta.find(m => m.id === id)
+    if (item) {
+      try { fs.unlinkSync(join(getHistoryDir(), item.filename)) } catch { /* ファイルが既にない場合は無視 */ }
+    }
+    saveHistoryMeta(meta.filter(m => m.id !== id))
+    return true
+  } catch (e) {
+    console.error('[GenCanvas] delete-history-item error:', e)
+    return false
+  }
+})
+
+ipcMain.handle('export-history-zip', async (_event, ids: string[]): Promise<boolean> => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'ZIP保存先を選択',
+    defaultPath: `gencanvas-export-${Date.now()}.zip`,
+    filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+  })
+  if (!filePath) return false
+
+  const dir = getHistoryDir()
+  const meta = loadHistoryMeta()
+  const targets = ids.length ? meta.filter(m => ids.includes(m.id)) : meta
+
+  await new Promise<void>((resolve, reject) => {
+    const output = fs.createWriteStream(filePath)
+    const archive = archiver('zip', { zlib: { level: 6 } })
+    output.on('close', resolve)
+    archive.on('error', reject)
+    archive.pipe(output)
+    for (const item of targets) {
+      const imgPath = join(dir, item.filename)
+      if (fs.existsSync(imgPath)) {
+        const label = item.prompt.slice(0, 30).replace(/[^\w぀-鿿]/g, '_')
+        const ext = item.filename.split('.').pop() || 'png'
+        archive.file(imgPath, { name: `${item.createdAt}-${label}.${ext}` })
+      }
+    }
+    archive.finalize()
+  })
+  return true
+})
+
+ipcMain.handle('copy-to-clipboard', (_event, dataUrl: string): boolean => {
+  try {
+    clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))
+    return true
+  } catch {
+    return false
+  }
+})
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.gencanvas.app')

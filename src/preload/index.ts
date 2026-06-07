@@ -34,13 +34,23 @@ const api = {
   getInitialToken: (): string => initialToken,
   saveToken: (token: string): void => writeTokenSync(token),
 
-  generateImage: (prompt: string, width: number, height: number): Promise<string> =>
-    ipcRenderer.invoke('generate-image', prompt, width, height),
+  generateImage: (prompt: string, width: number, height: number, options?: object): Promise<string> =>
+    ipcRenderer.invoke('generate-image', prompt, width, height, options),
   translateText: (text: string): Promise<string> =>
     ipcRenderer.invoke('translate-text', text),
   getSettings: (): Promise<{ hfToken: string }> => ipcRenderer.invoke('get-settings'),
   setSettings: (settings: { hfToken: string }): Promise<boolean> =>
-    ipcRenderer.invoke('set-settings', settings)
+    ipcRenderer.invoke('set-settings', settings),
+  saveHistoryItem: (item: object): Promise<boolean> =>
+    ipcRenderer.invoke('save-history-item', item),
+  loadHistory: (): Promise<object[]> =>
+    ipcRenderer.invoke('load-history'),
+  copyToClipboard: (dataUrl: string): Promise<boolean> =>
+    ipcRenderer.invoke('copy-to-clipboard', dataUrl),
+  deleteHistoryItem: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-history-item', id),
+  exportHistoryZip: (ids: string[]): Promise<boolean> =>
+    ipcRenderer.invoke('export-history-zip', ids)
 }
 
 if (process.contextIsolated) {
