@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { TabType, GeneratedImage } from '../App'
 import type { ToastType } from '../components/Toast'
 
@@ -98,6 +98,13 @@ const COLOR_PRESETS = [
   '#EA580C','#DB2777','#0D9488','#1F2937',
 ]
 
+const QUALITY_PRESETS = [
+  { id: 'fast',     label: '🚀 高速',   numSteps: 4,  guidanceScale: 2.0 },
+  { id: 'standard', label: '⚖️ 標準',   numSteps: 8,  guidanceScale: 3.5 },
+  { id: 'high',     label: '✨ 高品質',  numSteps: 20, guidanceScale: 5.0 },
+  { id: 'art',      label: '🎨 芸術的',  numSteps: 30, guidanceScale: 7.5 },
+] as const
+
 // 16進数カラーを自然言語に変換
 function hexToColorName(hex: string): string {
   const r = parseInt(hex.slice(1,3),16)
@@ -157,14 +164,25 @@ interface Props {
   showToast: (msg: string, type?: ToastType) => void
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const api = (): any => (window as any).api
+const FAV_KEY = 'gc-prompt-fav'
+
+function loadFavorites(): string[] {
+  try {
+    const raw = localStorage.getItem(FAV_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error('not an array')
+    return parsed
+  } catch (e) {
+    console.warn('[GenCanvas] Clearing corrupted favorites:', e)
+    localStorage.removeItem(FAV_KEY)
+    return []
+  }
+}
 
 export default function GeneratePanel({ activeTab, onGenerated, showToast }: Props): JSX.Element {
   const [prompt, setPrompt]               = useState('')
-  const [favorites, setFavorites]         = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('gc-prompt-fav') || '[]') } catch { return [] }
-  })
+  const [favorites, setFavorites]         = useState<string[]>(loadFavorites)
   const [showFavs, setShowFavs]           = useState(false)
   const [selectedStyle, setSelectedStyle] = useState('flat')
   const [color, setColor]                 = useState('#7C3AED')
@@ -196,17 +214,43 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
   // 文字・記号排除
   const [strictNoText, setStrictNoText]   = useState(true)
 
+  // ネガティブプロンプト・品質プリセット・シードロック
+  const [negativePrompt, setNegativePrompt] = useState('')
+  const [activePreset, setActivePreset]     = useState<string>('standard')
+  const [seedLocked, setSeedLocked]         = useState(false)
+
+  // Ctrl+V でクリップボードから参照画像を貼り付け
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent): void => {
+      if (refImage) return // すでに参照画像がある場合は上書きしない
+      const imgItem = Array.from(e.clipboardData?.items ?? []).find(it => it.type.startsWith('image/'))
+      if (!imgItem) return
+      const file = imgItem.getAsFile()
+      if (!file) return
+      resizeToBase64(file)
+        .then(b64 => { setRefImage(b64); showToast('クリップボードから画像を貼り付けました', 'success') })
+        .catch(() => showToast('クリップボード画像の読み込みに失敗しました', 'error'))
+    }
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [refImage])
+
+  const persistFavorites = (next: string[]): void => {
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(next)) }
+    catch (e) { console.warn('[GenCanvas] Failed to persist favorites:', e) }
+  }
+
   const addFavorite = (): void => {
     if (!prompt.trim()) return
     const next = [prompt.trim(), ...favorites.filter(f => f !== prompt.trim())].slice(0, 20)
     setFavorites(next)
-    localStorage.setItem('gc-prompt-fav', JSON.stringify(next))
+    persistFavorites(next)
     showToast('お気に入りに保存しました', 'success')
   }
   const removeFavorite = (fav: string): void => {
     const next = favorites.filter(f => f !== fav)
     setFavorites(next)
-    localStorage.setItem('gc-prompt-fav', JSON.stringify(next))
+    persistFavorites(next)
   }
 
   const toggleTag = (arr: string[], item: string, set: (v: string[]) => void): void =>
@@ -270,7 +314,7 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
     if (!prompt.trim() || isTranslating) return
     setIsTranslating(true)
     try {
-      const translated = await api().translateText(prompt.trim())
+      const translated = await window.api.translateText(prompt.trim())
       const built = buildEnglishPrompt(translated)
       setBuiltPrompt(built)
       setEditedPrompt(built)
@@ -295,24 +339,33 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
         : BG_SIZES.find(s => s.id === selectedSize) || { w: 1920, h: 1080 }
 
       console.log('[GenCanvas] 送信プロンプト:', finalPrompt)
-      const results: GeneratedImage[] = []
+      if (count > 1) setProgress(`生成中... (0/${count} 完了)`)
 
-      for (let i = 0; i < count; i++) {
-        setProgress(count > 1 ? `生成中... (${i+1}/${count})` : '生成中...')
-        const url = await api().generateImage(finalPrompt, sizeObj.w, sizeObj.h, {
-          numSteps,
-          guidanceScale,
-          seed,
-          refImage: refImage ?? undefined,
-          strength: refStrength,
+      let completed = 0
+      const baseTime = Date.now()
+      const results = await Promise.all(
+        Array.from({ length: count }, (_, i): Promise<GeneratedImage> => {
+          // シード固定時は i だけオフセット、ランダム時は -1 のまま各自ランダム
+          const thisSeed = seed >= 0 ? seed + i : -1
+          return window.api.generateImage(finalPrompt, sizeObj.w, sizeObj.h, {
+            numSteps,
+            guidanceScale,
+            seed: thisSeed,
+            refImage: refImage ?? undefined,
+            strength: refStrength,
+            negativePrompt: negativePrompt.trim() || undefined,
+          }).then(url => {
+            completed++
+            if (count > 1) setProgress(`生成中... (${completed}/${count} 完了)`)
+            return {
+              id: `${baseTime}-${i}`, url,
+              prompt, englishPrompt: finalPrompt,
+              style: selectedStyle, type: activeTab, createdAt: Date.now(),
+              params: { steps: numSteps, guidance: guidanceScale, seed: thisSeed },
+            }
+          })
         })
-        results.push({
-          id: `${Date.now()}-${i}`, url,
-          prompt, englishPrompt: finalPrompt,
-          style: selectedStyle, type: activeTab, createdAt: Date.now(),
-          params: { steps: numSteps, guidance: guidanceScale, seed },
-        })
-      }
+      )
       onGenerated(results)
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err)
@@ -364,7 +417,8 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
           ) : (
             <label className="flex flex-col items-center justify-center h-20 border border-dashed border-[#3A3A3A] rounded-lg cursor-pointer hover:border-[#7C3AED] hover:bg-[#7C3AED]/5 transition-colors text-[#666] hover:text-[#AAAAAA]">
               <span className="text-xl mb-1">📎</span>
-              <span className="text-[10px]">クリックまたはドロップで画像を追加</span>
+              <span className="text-[10px]">クリックまたはドロップで追加</span>
+              <span className="text-[9px] text-[#555] mt-0.5">Ctrl+V でクリップボードから貼り付け可</span>
               <input type="file" accept="image/*" className="hidden"
                 onChange={async e => {
                   const f = e.target.files?.[0]
@@ -589,16 +643,35 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
           </button>
           {showAdvanced && (
             <div className="flex flex-col gap-3 bg-[#0D0D0D] border border-[#2A2A2A] rounded-lg p-3">
+
+              {/* 品質プリセット */}
+              <div>
+                <label className="text-[10px] text-[#AAAAAA] block mb-1.5">品質プリセット</label>
+                <div className="grid grid-cols-2 gap-1">
+                  {QUALITY_PRESETS.map(p => (
+                    <button key={p.id}
+                      onClick={() => { setNumSteps(p.numSteps); setGuidanceScale(p.guidanceScale); setActivePreset(p.id) }}
+                      className={`py-1.5 text-[10px] rounded border transition-colors ${
+                        activePreset === p.id
+                          ? 'border-[#7C3AED] bg-[#7C3AED]/20 text-white'
+                          : 'border-[#2A2A2A] text-[#777] bg-[#111] hover:border-[#555] hover:text-[#AAAAAA]'
+                      }`}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <div className="flex justify-between mb-1">
                   <label className="text-[10px] text-[#AAAAAA]">ステップ数 <span className="text-[#555]">（多いほど高品質・低速）</span></label>
                   <span className="text-[10px] text-[#888]">{numSteps}</span>
                 </div>
-                <input type="range" min="4" max="20" value={numSteps}
-                  onChange={e => setNumSteps(+e.target.value)}
+                <input type="range" min="4" max="30" value={numSteps}
+                  onChange={e => { setNumSteps(+e.target.value); setActivePreset('') }}
                   className="w-full accent-[#7C3AED]" />
                 <div className="flex justify-between text-[9px] text-[#555] mt-0.5">
-                  <span>速い (4)</span><span>高品質 (20)</span>
+                  <span>速い (4)</span><span>芸術的 (30)</span>
                 </div>
               </div>
               <div>
@@ -607,7 +680,7 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
                   <span className="text-[10px] text-[#888]">{guidanceScale.toFixed(1)}</span>
                 </div>
                 <input type="range" min="10" max="100" value={Math.round(guidanceScale * 10)}
-                  onChange={e => setGuidanceScale(+e.target.value / 10)}
+                  onChange={e => { setGuidanceScale(+e.target.value / 10); setActivePreset('') }}
                   className="w-full accent-[#7C3AED]" />
                 <div className="flex justify-between text-[9px] text-[#555] mt-0.5">
                   <span>自由 (1.0)</span><span>忠実 (10.0)</span>
@@ -615,19 +688,55 @@ export default function GeneratePanel({ activeTab, onGenerated, showToast }: Pro
               </div>
               <div>
                 <div className="flex justify-between mb-1">
-                  <label className="text-[10px] text-[#AAAAAA]">シード値 <span className="text-[#555]">（-1=ランダム・固定で再現可能）</span></label>
+                  <label className="text-[10px] text-[#AAAAAA]">
+                    シード値 <span className="text-[#555]">（-1=ランダム・固定で再現可能）</span>
+                  </label>
                   <span className="text-[10px] text-[#888]">{seed === -1 ? 'ランダム' : seed}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   <input type="number" min="-1" max="9999999" value={seed}
                     onChange={e => setSeed(+e.target.value)}
                     className="flex-1 bg-[#111] border border-[#2A2A2A] rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-[#7C3AED]" />
-                  <button onClick={() => setSeed(Math.floor(Math.random() * 9999999))}
-                    className="px-2 py-1 text-[10px] border border-[#2A2A2A] rounded text-[#777] hover:text-white hover:border-[#555]">🎲</button>
-                  <button onClick={() => setSeed(-1)}
-                    className="px-2 py-1 text-[10px] border border-[#2A2A2A] rounded text-[#777] hover:text-white hover:border-[#555]">∞</button>
+                  <button onClick={() => { if (!seedLocked) setSeed(Math.floor(Math.random() * 9999999)) }}
+                    disabled={seedLocked}
+                    title={seedLocked ? 'ロック中（クリックで解除）' : 'ランダムシード'}
+                    className="px-2 py-1 text-[10px] border border-[#2A2A2A] rounded text-[#777] hover:text-white hover:border-[#555] disabled:opacity-30">🎲</button>
+                  <button onClick={() => { if (!seedLocked) setSeed(-1) }}
+                    disabled={seedLocked}
+                    title="シードをリセット（ランダム）"
+                    className="px-2 py-1 text-[10px] border border-[#2A2A2A] rounded text-[#777] hover:text-white hover:border-[#555] disabled:opacity-30">∞</button>
+                  <button
+                    onClick={() => setSeedLocked(v => !v)}
+                    title={seedLocked ? '🔒 シードロック中 — クリックで解除' : '🔓 シードを固定する'}
+                    className={`px-2 py-1 text-[10px] border rounded transition-colors ${
+                      seedLocked
+                        ? 'border-[#7C3AED] bg-[#7C3AED]/20 text-[#A78BFA]'
+                        : 'border-[#2A2A2A] text-[#555] hover:border-[#555] hover:text-[#AAAAAA]'
+                    }`}>
+                    {seedLocked ? '🔒' : '🔓'}
+                  </button>
                 </div>
               </div>
+
+              {/* ネガティブプロンプト */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] text-[#AAAAAA]">ネガティブプロンプト <span className="text-[#555]">（除外したい要素）</span></label>
+                  {negativePrompt && (
+                    <button onClick={() => setNegativePrompt('')}
+                      className="text-[9px] text-[#555] hover:text-[#888]">クリア</button>
+                  )}
+                </div>
+                <textarea
+                  value={negativePrompt}
+                  onChange={e => setNegativePrompt(e.target.value)}
+                  placeholder="blurry, low quality, watermark, extra fingers..."
+                  rows={2}
+                  className="w-full bg-[#111] border border-[#2A2A2A] rounded px-2 py-1.5 text-[10px] text-white placeholder-[#444] resize-none focus:outline-none focus:border-[#7C3AED]"
+                />
+                <p className="text-[9px] text-[#444] mt-0.5">※ FLUXモデルでは効果が限定的な場合があります</p>
+              </div>
+
             </div>
           )}
         </div>

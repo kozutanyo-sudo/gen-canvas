@@ -15,6 +15,7 @@ interface GenerateOptions {
   seed?: number
   refImage?: string
   strength?: number
+  negativePrompt?: string
 }
 
 interface HistoryMetaItem {
@@ -42,7 +43,11 @@ function loadSettings(): Settings {
 }
 
 function saveSettings(settings: Settings): void {
-  fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2))
+  try {
+    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2))
+  } catch (e) {
+    console.error('[GenCanvas] saveSettings failed:', e)
+  }
 }
 
 function getHistoryDir(): string {
@@ -54,15 +59,29 @@ function getHistoryMetaPath(): string {
 }
 
 function loadHistoryMeta(): HistoryMetaItem[] {
+  const metaPath = getHistoryMetaPath()
   try {
-    return JSON.parse(fs.readFileSync(getHistoryMetaPath(), 'utf-8'))
-  } catch {
+    const raw = fs.readFileSync(metaPath, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) throw new Error('metadata is not an array')
+    return parsed
+  } catch (e) {
+    // Preserve corrupted file as a backup rather than silently losing all history
+    if (fs.existsSync(metaPath)) {
+      const backupPath = metaPath + '.bak'
+      try { fs.copyFileSync(metaPath, backupPath) } catch { /* ignore backup failure */ }
+      console.error('[GenCanvas] Corrupted metadata.json — backed up to .bak, resetting:', e)
+    }
     return []
   }
 }
 
 function saveHistoryMeta(meta: HistoryMetaItem[]): void {
-  fs.writeFileSync(getHistoryMetaPath(), JSON.stringify(meta))
+  try {
+    fs.writeFileSync(getHistoryMetaPath(), JSON.stringify(meta))
+  } catch (e) {
+    console.error('[GenCanvas] saveHistoryMeta failed:', e)
+  }
 }
 
 function createWindow(): void {
@@ -107,10 +126,11 @@ function generateWithHuggingFace(
   options: GenerateOptions = {}
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const { numSteps = 4, guidanceScale = 3.5, seed, refImage, strength = 0.75 } = options
+    const { numSteps = 4, guidanceScale = 3.5, seed, refImage, strength = 0.75, negativePrompt } = options
     const parameters: Record<string, unknown> = { width, height, num_inference_steps: numSteps, guidance_scale: guidanceScale }
     if (seed !== undefined && seed >= 0) parameters.seed = seed
     if (refImage) parameters.strength = strength
+    if (negativePrompt?.trim()) parameters.negative_prompt = negativePrompt.trim()
 
     const bodyObj: Record<string, unknown> = { inputs: prompt, parameters }
     if (refImage) bodyObj.image = refImage.replace(/^data:image\/\w+;base64,/, '')
@@ -358,6 +378,7 @@ ipcMain.handle('export-history-zip', async (_event, ids: string[]): Promise<bool
     const output = fs.createWriteStream(filePath)
     const archive = archiver('zip', { zlib: { level: 6 } })
     output.on('close', resolve)
+    output.on('error', reject)  // catch write-stream errors (disk full, permissions)
     archive.on('error', reject)
     archive.pipe(output)
     for (const item of targets) {

@@ -9,6 +9,7 @@ interface GenCanvasApi {
       seed?: number
       refImage?: string
       strength?: number
+      negativePrompt?: string
     }
   ): Promise<string>
   translateText(text: string): Promise<string>
