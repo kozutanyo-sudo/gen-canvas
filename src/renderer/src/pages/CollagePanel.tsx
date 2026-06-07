@@ -30,14 +30,15 @@ export default function CollagePanel({ images, onBack, showToast }: Props): JSX.
   // 全画像をプリロード
   useEffect(() => {
     const arr: HTMLImageElement[] = new Array(images.length)
-    let count = 0
+    let settled = 0
+    const onSettled = (): void => {
+      settled++
+      if (settled === images.length) setLoadedImgs([...arr])
+    }
     images.forEach((img, i) => {
       const el = new Image()
-      el.onload = (): void => {
-        arr[i] = el
-        count++
-        if (count === images.length) setLoadedImgs([...arr])
-      }
+      el.onload = (): void => { arr[i] = el; onSettled() }
+      el.onerror = (): void => { arr[i] = el; onSettled() } // prevent infinite hang
       el.src = img.url
     })
   }, [])
@@ -57,7 +58,8 @@ export default function CollagePanel({ images, onBack, showToast }: Props): JSX.
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     loadedImgs.forEach((imgEl, i) => {
-      if (!imgEl) return
+      // skip falsy or broken images (naturalWidth=0 means load failed)
+      if (!imgEl || imgEl.naturalWidth === 0) return
       const col = i % cols
       const row = Math.floor(i / cols)
       const x = gap + col * (cellSize + gap)

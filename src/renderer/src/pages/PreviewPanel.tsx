@@ -131,14 +131,22 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
     a.href = url; a.download = `gencanvas-${selectedImage.id}.png`; a.click()
   }
 
+  // evolve: new random seed; regenerate: reuse original seed for reproducibility
+  const EVOLVE_OPTS = { numSteps: 6, guidanceScale: 3.5, seed: -1 }
+  const regenOpts = {
+    numSteps: selectedImage.params?.steps ?? 6,
+    guidanceScale: selectedImage.params?.guidance ?? 3.5,
+    seed: selectedImage.params?.seed ?? -1,
+  }
+
   const handleEvolve = async (): Promise<void> => {
     if (isEvolving || !evolvePrompt.trim()) return
     setIsEvolving(true)
     try {
       const base = selectedImage.englishPrompt || selectedImage.prompt
       const ep = `${base}, ${evolvePrompt}`
-      const url = await window.api.generateImage(ep, size.w, size.h)
-      onEvolve({ id: `${Date.now()}`, url, prompt: selectedImage.prompt, englishPrompt: ep, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now() })
+      const url = await window.api.generateImage(ep, size.w, size.h, EVOLVE_OPTS)
+      onEvolve({ id: `${Date.now()}`, url, prompt: selectedImage.prompt, englishPrompt: ep, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now(), params: EVOLVE_OPTS })
       setEvolvePrompt('')
     } catch { showToast('進化に失敗しました', 'error') } finally { setIsEvolving(false) }
   }
@@ -148,8 +156,8 @@ export default function PreviewPanel({ batch, selectedImage, onSelectImage, onBa
     setIsEvolving(true)
     try {
       const base = selectedImage.englishPrompt || selectedImage.prompt
-      const url = await window.api.generateImage(base, size.w, size.h)
-      onEvolve({ id: `${Date.now()}`, url, prompt: selectedImage.prompt, englishPrompt: base, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now() })
+      const url = await window.api.generateImage(base, size.w, size.h, regenOpts)
+      onEvolve({ id: `${Date.now()}`, url, prompt: selectedImage.prompt, englishPrompt: base, style: selectedImage.style, type: selectedImage.type, createdAt: Date.now(), params: regenOpts })
     } catch { showToast('再生成に失敗しました', 'error') } finally { setIsEvolving(false) }
   }
 

@@ -1,13 +1,10 @@
 import type { TextState } from './previewHelpers'
-import { FONTS, COLOR_SWATCHES } from './previewHelpers'
+import { FONTS, COLOR_SWATCHES, GRID_POSITIONS, GRID_ARROWS } from './previewHelpers'
 
 interface Props {
   text: TextState
   onChange: (t: TextState) => void
 }
-
-const GRID_POSITIONS = [[5,15],[50,15],[95,15],[5,50],[50,50],[95,50],[5,85],[50,85],[95,85]]
-const GRID_ARROWS = ['↖','↑','↗','←','＋','→','↙','↓','↘']
 
 export default function TextTab({ text, onChange }: Props): JSX.Element {
   const set = (patch: Partial<TextState>): void => onChange({ ...text, ...patch })

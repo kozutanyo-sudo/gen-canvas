@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { GeneratedImage } from '../App'
 import type { ToastType } from '../components/Toast'
+import { loadImage as loadImg } from './preview/previewHelpers'
 
 interface Props {
   images: GeneratedImage[]
@@ -20,15 +21,6 @@ const LOOP_OPTIONS = [
   { label: '1回', value: 1 },
   { label: '3回', value: 3 },
 ]
-
-function loadImg(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
-}
 
 export default function AnimatedGifPanel({ images, onBack, showToast }: Props): JSX.Element {
   const [delay, setDelay]     = useState(500)

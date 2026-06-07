@@ -2,9 +2,6 @@ import { useState } from 'react'
 import type { GeneratedImage } from '../App'
 import type { ToastType } from '../components/Toast'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const api = (): any => (window as any).api
-
 interface Props {
   images: GeneratedImage[]
   onBack: () => void
@@ -35,7 +32,7 @@ export default function BatchEvolvePanel({ images, onBack, onAddToHistory, showT
       try {
         const base = img.englishPrompt || img.prompt
         const newEnglishPrompt = `${base}, ${evolvePrompt}`
-        const url = await api().generateImage(newEnglishPrompt, size.w, size.h, {
+        const url = await window.api.generateImage(newEnglishPrompt, size.w, size.h, {
           numSteps: 6, guidanceScale: 3.5, seed: -1,
         })
         const evolved: GeneratedImage = {

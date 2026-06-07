@@ -1,13 +1,10 @@
 import type { ShapeState } from './previewHelpers'
-import { SHAPES, COLOR_SWATCHES } from './previewHelpers'
+import { SHAPES, COLOR_SWATCHES, GRID_POSITIONS, GRID_ARROWS } from './previewHelpers'
 
 interface Props {
   shape: ShapeState
   onChange: (s: ShapeState) => void
 }
-
-const GRID_POSITIONS = [[5,15],[50,15],[95,15],[5,50],[50,50],[95,50],[5,85],[50,85],[95,85]]
-const GRID_ARROWS = ['↖','↑','↗','←','＋','→','↙','↓','↘']
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Element {
   return (

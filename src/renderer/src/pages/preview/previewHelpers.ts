@@ -16,6 +16,14 @@ export interface ShapeState {
 }
 
 // ── 定数 ────────────────────────────────────────────────────
+export const GRID_POSITIONS = [
+  [5,15],[50,15],[95,15],
+  [5,50],[50,50],[95,50],
+  [5,85],[50,85],[95,85],
+] as const
+
+export const GRID_ARROWS = ['↖','↑','↗','←','＋','→','↙','↓','↘'] as const
+
 export const FONTS = [
   { id: 'gothic',  label: 'ゴシック',   css: "'BIZ UDPGothic','Yu Gothic UI',sans-serif" },
   { id: 'mincho',  label: '明朝',        css: "'BIZ UDMincho','Yu Mincho',serif" },
@@ -135,46 +143,41 @@ export function drawShape(
   }
 }
 
-export function compositeCanvas(
+export async function compositeCanvas(
   canvas: HTMLCanvasElement,
   imgSrc: string,
   ts: TextState,
   ss: ShapeState
 ): Promise<string> {
-  return new Promise(resolve => {
-    const img = new Image()
-    img.onload = () => {
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0)
-      const W = canvas.width, H = canvas.height
+  const img = await loadImage(imgSrc)
+  canvas.width = img.naturalWidth
+  canvas.height = img.naturalHeight
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0)
+  const W = canvas.width, H = canvas.height
 
-      if (ss.enabled) {
-        ctx.globalAlpha = ss.opacity / 100
-        drawShape(ctx, ss.type, ss.x / 100 * W, ss.y / 100 * H, ss.size / 100 * Math.min(W, H) * 0.5, ss.color, ss.sphere3d)
-        ctx.globalAlpha = 1
-      }
+  if (ss.enabled) {
+    ctx.globalAlpha = ss.opacity / 100
+    drawShape(ctx, ss.type, ss.x / 100 * W, ss.y / 100 * H, ss.size / 100 * Math.min(W, H) * 0.5, ss.color, ss.sphere3d)
+    ctx.globalAlpha = 1
+  }
 
-      if (ts.text.trim()) {
-        const tx = ts.x / 100 * W, ty = ts.y / 100 * H
-        const sz = Math.round(ts.size * W / 400)
-        ctx.font = `${ts.italic ? 'italic ' : ''}${ts.bold ? 'bold ' : ''}${sz}px ${FONTS.find(f => f.id === ts.font)?.css ?? 'sans-serif'}`
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        if (ts.bgOpacity > 0) {
-          const m = ctx.measureText(ts.text), pad = sz * 0.3
-          ctx.globalAlpha = ts.bgOpacity / 100
-          ctx.fillStyle = ts.bgColor
-          ctx.fillRect(tx - m.width / 2 - pad, ty - sz * 0.7, m.width + pad * 2, sz * 1.4)
-          ctx.globalAlpha = 1
-        }
-        if (ts.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = sz * 0.25; ctx.shadowOffsetY = 2 }
-        if (ts.stroke) { ctx.strokeStyle = ts.strokeColor; ctx.lineWidth = sz * 0.08; ctx.strokeText(ts.text, tx, ty) }
-        ctx.fillStyle = ts.color; ctx.fillText(ts.text, tx, ty)
-        ctx.shadowColor = 'transparent'
-      }
-      resolve(canvas.toDataURL('image/png'))
+  if (ts.text.trim()) {
+    const tx = ts.x / 100 * W, ty = ts.y / 100 * H
+    const sz = Math.round(ts.size * W / 400)
+    ctx.font = `${ts.italic ? 'italic ' : ''}${ts.bold ? 'bold ' : ''}${sz}px ${FONTS.find(f => f.id === ts.font)?.css ?? 'sans-serif'}`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    if (ts.bgOpacity > 0) {
+      const m = ctx.measureText(ts.text), pad = sz * 0.3
+      ctx.globalAlpha = ts.bgOpacity / 100
+      ctx.fillStyle = ts.bgColor
+      ctx.fillRect(tx - m.width / 2 - pad, ty - sz * 0.7, m.width + pad * 2, sz * 1.4)
+      ctx.globalAlpha = 1
     }
-    img.src = imgSrc
-  })
+    if (ts.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = sz * 0.25; ctx.shadowOffsetY = 2 }
+    if (ts.stroke) { ctx.strokeStyle = ts.strokeColor; ctx.lineWidth = sz * 0.08; ctx.strokeText(ts.text, tx, ty) }
+    ctx.fillStyle = ts.color; ctx.fillText(ts.text, tx, ty)
+    ctx.shadowColor = 'transparent'
+  }
+  return canvas.toDataURL('image/png')
 }
